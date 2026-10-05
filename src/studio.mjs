@@ -14,7 +14,7 @@ import { TikTokSource } from './tiktok.mjs';
 import { ObsClient } from './obs.mjs';
 import { render } from './template.mjs';
 import { normalize } from './normalize.mjs';
-import { AiResponder } from './ai.mjs';
+import { AiResponder, AiError } from './ai.mjs';
 import { SongQueue } from './songs.mjs';
 import { KeyController, createOsDriver } from './keyboard.mjs';
 import { License, PRO_FEATURES } from './license.mjs';
@@ -53,7 +53,12 @@ export class Studio {
     this.sim = new Simulator((ev) => this.handleEvent(ev));
     this.source = new TikTokSource();
     this.obs = new ObsClient();
-    this.ai = new AiResponder({ getConfig: () => this.cfg.settings.ai, ...(createAiClient ? { createClient: createAiClient } : {}) });
+    this.ai = new AiResponder({
+      getConfig: () => this.cfg.settings.ai,
+      getCloud: () => ({ url: this.license.cfg.cloudUrl, ...this.license.cloudCredentials() }),
+      fetchImpl,
+      ...(createAiClient ? { createClient: createAiClient } : {}),
+    });
     this.songs = new SongQueue({ getConfig: () => this.cfg.settings.songs });
     this.keys = new KeyController({ driver: keyDriver || createOsDriver(), getConfig: () => this.cfg.settings.keyboard });
     this.license = license || new License({ file: dataDir && join(dataDir, 'license.json'), config: packageLicenseConfig(), fetchImpl });
@@ -313,7 +318,13 @@ export class Studio {
         this.queue.push({ id: `${ev.id}-ai`, text: `🤖 @${ev.user.nickname}, ${clean}`, avatar: ev.user.avatar, style: 'blue', duration: Math.min(15, 4 + clean.length / 20), priority: 1 });
       if (action.speak) this.speak(clean);
     } catch (err) {
-      this.logLine(`🤖 Ошибка ИИ: ${err?.status ? `HTTP ${err.status} ` : ''}${err?.message || err}`);
+      // Subscription/quota answers from the cloud repeat for every question: log them once a minute.
+      const key = err instanceof AiError ? `ai-${err.status}` : 'ai-error';
+      const last = this.lockedNoticeAt.get(key) || 0;
+      if (Date.now() - last > 60000) {
+        this.lockedNoticeAt.set(key, Date.now());
+        this.logLine(`🤖 ${err instanceof AiError ? err.message : `Ошибка ИИ: ${err?.status ? `HTTP ${err.status} ` : ''}${err?.message || err}`}`);
+      }
     }
   }
 

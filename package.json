@@ -14,7 +14,8 @@
     "dist": "electron-builder",
     "dist:win": "electron-builder --win",
     "dist:mac": "electron-builder --mac",
-    "dist:linux": "electron-builder --linux"
+    "dist:linux": "electron-builder --linux",
+    "cloud": "node cloud/server.mjs"
   },
   "engines": {
     "node": ">=20"
@@ -72,6 +73,7 @@
   },
   "desktopName": "tiklive-studio.desktop",
   "tiklive": {
+    "cloudUrl": "",
     "checkoutUrl": "",
     "storeId": null,
     "productId": null,

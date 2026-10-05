@@ -20,6 +20,7 @@ export const LICENSE_DEFAULTS = {
   trialDays: 7,
   priceLabel: '$8 / месяц',
   checkoutUrl: '', // Lemon Squeezy checkout link of the "TikLive Pro" subscription
+  cloudUrl: '', // TikLive cloud (cloud/server.mjs) that answers AI questions for subscribers
   storeId: null, // keys from other stores/products are rejected
   productId: null,
   offlineGraceDays: 7, // keep Pro working this long without reaching the license server
@@ -269,6 +270,15 @@ export class License {
     this.save();
     this.emit();
     return this.status();
+  }
+
+  // Identity sent to the TikLive cloud: the license key (Pro) or an anonymous device id (trial).
+  cloudCredentials() {
+    return {
+      licenseKey: this.state.key, // the cloud decides whether it is still valid
+      instanceId: this.state.instanceId,
+      deviceId: createHash('sha256').update(this.secret).update('device').digest('hex').slice(0, 40),
+    };
   }
 
   startAutoValidate() {

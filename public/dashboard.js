@@ -551,10 +551,14 @@
     try {
       const r = await api('/api/ai/ask', { question: e.target.question.value });
       $('#aiAnswer').textContent = `🤖 ${r.answer}`;
+      if (r.quota) $('#aiQuota').textContent = `${r.quota.plan === 'pro' ? 'Pro' : 'Пробный период'}: использовано ${r.quota.used} из ${r.quota.limit} ответов${r.quota.plan === 'pro' ? ' в этом месяце' : ''}`;
     } catch (err) {
       $('#aiAnswer').textContent = `⚠ ${err.message}`;
     }
   });
+
+  const syncAiMode = () => $('#aiOwn').classList.toggle('hidden', $('#aiMode').value !== 'own');
+  $('#aiMode').addEventListener('change', syncAiMode);
 
   // ---------- keyboard ----------
   $('#kbStop').onclick = () => call('/api/keys/stop', {}, 'Клавиши остановлены');
@@ -632,6 +636,7 @@
     renderKeyboard(state.keyboard);
     fillForm($('#songsForm'), state.config.settings.songs || {});
     fillForm($('#aiForm'), state.config.settings.ai || {});
+    syncAiMode();
     fillForm($('#kbForm'), state.config.settings.keyboard || {});
   }
   function connect() {

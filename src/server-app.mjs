@@ -75,6 +75,7 @@ function buildRoutes(studio, broadcast) {
     'POST /api/ai/ask': async (b) => {
       studio.requirePro('ai');
       const answer = await studio.ai.ask(String(b.question || ''), { nickname: 'стример' });
+      if (answer && studio.ai.quota) return { answer, quota: studio.ai.quota };
       if (!answer) throw new Error('Нет ответа: ИИ выключен, нет ключа или превышен лимит запросов');
       return { answer };
     },

@@ -147,10 +147,15 @@
       <form id="aiForm" class="card">
         <h3>🤖 ИИ отвечает на вопросы зрителей (Claude)</h3>
         <label class="check"><input type="checkbox" name="enabled"> Включить</label>
-        <label>Ключ Anthropic API (пусто = переменная ANTHROPIC_API_KEY)<input name="apiKey" type="password" autocomplete="off"></label>
+        <label>Режим<select name="mode" id="aiMode"><option value="cloud">☁ Облако TikLive — ничего настраивать не нужно (входит в Pro)</option><option value="own">🔑 Свой ключ Anthropic API</option></select></label>
+        <div id="aiOwn" class="hidden">
+          <label>Ключ Anthropic API (пусто = переменная ANTHROPIC_API_KEY)<input name="apiKey" type="password" autocomplete="off"></label>
+          <div class="grid2 tight">
+            <label>Модель<input name="model"></label>
+            <label>Глубина размышлений<select name="effort"><option value="low">low — быстро</option><option value="medium">medium</option><option value="high">high — точнее</option></select></label>
+          </div>
+        </div>
         <div class="grid2 tight">
-          <label>Модель<input name="model"></label>
-          <label>Глубина размышлений<select name="effort"><option value="low">low — быстро</option><option value="medium">medium</option><option value="high">high — точнее</option></select></label>
           <label>Запросов в минуту (макс.)<input name="maxPerMinute" type="number"></label>
           <label>Длина ответа, символов<input name="maxAnswerChars" type="number"></label>
         </div>
@@ -163,6 +168,7 @@
         <h3>Проверить</h3>
         <form id="aiAsk" class="inline"><input name="question" placeholder="Задайте вопрос как зритель…" value="Во что ты сегодня играешь?"><button class="primary">Спросить</button></form>
         <div id="aiAnswer" class="muted" style="margin-top:10px"></div>
+        <div id="aiQuota" class="muted"></div>
         <h4>Последние ответы</h4>
         <div id="aiLog" class="feed small"></div>
       </div>

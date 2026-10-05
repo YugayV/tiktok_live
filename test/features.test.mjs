@@ -89,7 +89,7 @@ function fakeAiClient(reply = 'Играем в Minecraft!', stop = 'end_turn') {
 
 test('ai responder: request shape, truncation, refusal, disabled, rate limit', async () => {
   const fake = fakeAiClient('x'.repeat(500));
-  const cfg = { ...DEFAULT_AI, enabled: true, maxAnswerChars: 50, maxPerMinute: 2, streamInfo: 'Minecraft' };
+  const cfg = { ...DEFAULT_AI, mode: 'own', enabled: true, maxAnswerChars: 50, maxPerMinute: 2, streamInfo: 'Minecraft' };
   const ai = new AiResponder({ getConfig: () => cfg, createClient: fake.create });
   const a = await ai.ask('Во что играем?', alice);
   assert.equal(a.length, 50);
@@ -121,6 +121,7 @@ test('studio: !sr starts playback, !ai answers via alert + broadcast, keys actio
     keyDriver: { name: 'fake', down: (k) => pressed.push(k), up: () => {} },
   });
   studio.cfg.settings.ai.enabled = true;
+  studio.cfg.settings.ai.mode = 'own';
   studio.cfg.settings.keyboard.enabled = true;
 
   studio.handleEvent(normalize('chat', { user: alice, comment: '!sr https://youtu.be/dQw4w9WgXcQ' }));
