@@ -3,3 +3,4 @@ data/*.json
 !data/.gitkeep
 dist/
 !build/
+delivery/
