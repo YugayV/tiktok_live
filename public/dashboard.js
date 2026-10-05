@@ -203,7 +203,12 @@
     obs: ['🎬 OBS', [['scene', 'Переключить на сцену'], ['sceneName', 'Сцена источника'], ['source', 'Источник'], ['visible', 'Показать (иначе скрыть)', 'checkbox']]],
     webhook: ['🌐 Webhook', [['url', 'URL', 'grow'], ['method', 'Метод'], ['body', 'Тело (шаблон, пусто = JSON события)', 'grow']]],
     overlay: ['🧩 Своё событие оверлея', [['widget', 'Виджет'], ['payload', 'Данные', 'grow']]],
+    ai: ['🤖 Ответ ИИ', [['prompt', 'Вопрос (шаблон, обычно {args})', 'grow'], ['alert', 'Алерт', 'checkbox'], ['speak', 'Озвучить', 'checkbox']]],
+    keys: ['🎮 Нажать клавиши', [['keys', 'Клавиши (w, space, ctrl+a)'], ['holdMs', 'Удержание, мс', 'number'], ['repeat', 'Повторов', 'number'], ['intervalMs', 'Пауза, мс', 'number']]],
+    songBump: ['🎵 Поднять песню зрителя', [['amount', 'На сколько', 'number']]],
+    songSkip: ['⏭ Пропустить песню', []],
   };
+  const ACTION_DEFAULTS = { alert: { text: '{nickname}', duration: 5 }, ai: { prompt: '{args}', alert: true, speak: true }, keys: { keys: 'space', holdMs: 100 }, songBump: { amount: 1 } };
 
   function renderRules() {
     const box = $('#rules');
@@ -263,7 +268,7 @@
     for (const [k, [label]] of Object.entries(ACTIONS)) addSel.add(new Option(label, k));
     addSel.onchange = () => {
       if (!addSel.value) return;
-      rule.actions.push({ type: addSel.value, ...(addSel.value === 'alert' ? { text: '{nickname}', duration: 5 } : {}) });
+      rule.actions.push({ type: addSel.value, ...(ACTION_DEFAULTS[addSel.value] || {}) });
       dirty = true;
       renderRules();
     };
@@ -419,6 +424,9 @@
     ['wheel', '🎡 Колесо фортуны', '&size=500', ''],
     ['poll', '📊 Голосование', 'Появляется, когда запущено голосование', ''],
     ['battle', '⚔ Битва подарков', 'Появляется, когда идёт битва', ''],
+    ['songs', '🎵 Очередь песен', 'Сейчас играет + следующие треки, &n=5', '&n=5'],
+    ['player', '▶ Проигрыватель YouTube', 'Играет заказанные YouTube-ссылки (без картинки: &video=0)', ''],
+    ['ai', '🤖 Ответы ИИ', 'Карточка «вопрос → ответ», &sec=12 — сколько показывать', ''],
     ['audio', '🔊 Только звук/TTS', 'Отдельный источник для звука, если алерты без аудио (&audio=0)', ''],
   ];
   function renderOverlays() {
@@ -428,7 +436,7 @@
       const url = `${location.origin}/overlay/?w=${w}${extra}`;
       const el = document.createElement('div');
       el.className = 'card ov';
-      el.innerHTML = `<h3>${title}</h3><div class="muted">${hint}</div><div class="url"><input readonly value="${esc(url)}"><button type="button">📋</button></div>${w === 'audio' ? '' : `<iframe src="${esc(url)}&preview=1&audio=0" loading="lazy"></iframe>`}`;
+      el.innerHTML = `<h3>${title}</h3><div class="muted">${hint}</div><div class="url"><input readonly value="${esc(url)}"><button type="button">📋</button></div>${w === 'audio' || w === 'player' ? '' : `<iframe src="${esc(url)}&preview=1&audio=0" loading="lazy"></iframe>`}`;
       el.querySelector('button').onclick = () => navigator.clipboard?.writeText(url).then(() => toast('URL скопирован'));
       box.append(el);
     }
@@ -478,6 +486,88 @@
     setTimeout(() => call('/api/obs/connect', {}, 'OBS подключен').then((r) => r && ($('#obsState').textContent = '● подключен')), 300);
   };
 
+  // ---------- sub-settings forms (songs / ai / keyboard) ----------
+  function fillForm(form, obj) {
+    for (const el of form.elements) {
+      if (!el.name) continue;
+      const v = getPath(obj, el.name);
+      if (el.type === 'checkbox') el.checked = Boolean(v);
+      else el.value = v ?? '';
+    }
+  }
+  function bindSettingsForm(sel, key, msg) {
+    $(sel).addEventListener('submit', (e) => {
+      e.preventDefault();
+      const obj = (S.config.settings[key] ||= {});
+      for (const el of e.target.elements) {
+        if (!el.name) continue;
+        setPath(obj, el.name, el.type === 'checkbox' ? el.checked : el.type === 'number' ? Number(el.value) : el.value);
+      }
+      saveConfig({ settings: S.config.settings }, msg);
+    });
+  }
+  bindSettingsForm('#songsForm', 'songs', 'Настройки песен сохранены');
+  bindSettingsForm('#aiForm', 'ai', 'Настройки ИИ сохранены');
+  bindSettingsForm('#kbForm', 'keyboard', 'Настройки клавиатуры сохранены');
+
+  // ---------- songs ----------
+  const songLabel = (s) => (s.videoId ? `▶ ${esc(s.title || 'YouTube ' + s.videoId)}` : esc(s.title || s.query));
+  function renderSongs(snap) {
+    if (!snap) return;
+    S.songs = snap;
+    const c = snap.current;
+    $('#songCurrent').innerHTML = c ? `<b>${songLabel(c)}</b> <span class="muted">— заказал ${esc(c.nickname)}</span>${c.videoId ? ` <a class="muted" href="https://youtu.be/${esc(c.videoId)}" target="_blank" rel="noopener">↗</a>` : ''}` : 'Ничего не играет';
+    const q = $('#songQueue');
+    q.replaceChildren();
+    if (!snap.queue.length) q.innerHTML = '<div class="muted">Очередь пуста. Зрители заказывают командой <code>!sr название</code></div>';
+    snap.queue.forEach((s, i) => {
+      const row = document.createElement('div');
+      row.className = 'r';
+      row.innerHTML = `<span>${i + 1}. ${songLabel(s)} <span class="muted">— ${esc(s.nickname)}${s.priority ? ' ⬆' + s.priority : ''}</span></span>`;
+      const del = button('✕', () => call('/api/songs/remove', { id: s.id }));
+      del.className = 'x danger';
+      row.append(del);
+      q.append(row);
+    });
+  }
+  $('#songNext').onclick = () => call('/api/songs/next', {});
+  $('#songClear').onclick = () => confirm('Очистить очередь песен?') && call('/api/songs/clear', {});
+  $('#songAdd').addEventListener('submit', (e) => {
+    e.preventDefault();
+    call('/api/songs/add', { text: e.target.text.value }, 'Добавлено').then(() => (e.target.text.value = ''));
+  });
+
+  // ---------- ai ----------
+  function addAi(a) {
+    const el = document.createElement('div');
+    el.className = 'it';
+    el.innerHTML = `<span><b>${esc(a.nickname)}:</b> ${esc(a.question)}<br>🤖 ${esc(a.answer)}</span><span class="t">${time(a.ts)}</span>`;
+    $('#aiLog').prepend(el);
+    while ($('#aiLog').children.length > 30) $('#aiLog').lastChild.remove();
+  }
+  $('#aiAsk').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    $('#aiAnswer').textContent = 'Думаю…';
+    try {
+      const r = await api('/api/ai/ask', { question: e.target.question.value });
+      $('#aiAnswer').textContent = `🤖 ${r.answer}`;
+    } catch (err) {
+      $('#aiAnswer').textContent = `⚠ ${err.message}`;
+    }
+  });
+
+  // ---------- keyboard ----------
+  $('#kbStop').onclick = () => call('/api/keys/stop', {}, 'Клавиши остановлены');
+  $('#kbTest').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const f = Object.fromEntries(new FormData(e.target));
+    toast('Переключитесь в окно игры — нажатие через 3 секунды');
+    setTimeout(() => call('/api/keys/test', { keys: f.keys, holdMs: Number(f.holdMs) }), 3000);
+  });
+  function renderKeyboard(k) {
+    if (k) $('#kbState').textContent = `Драйвер: ${k.driver}`;
+  }
+
   // ---------- live socket ----------
   function hydrate(state) {
     S = state;
@@ -495,6 +585,11 @@
     renderBattle(state.battle);
     renderSim(state.simulator);
     renderSettings();
+    renderSongs(state.songs);
+    renderKeyboard(state.keyboard);
+    fillForm($('#songsForm'), state.config.settings.songs || {});
+    fillForm($('#aiForm'), state.config.settings.ai || {});
+    fillForm($('#kbForm'), state.config.settings.keyboard || {});
   }
   function connect() {
     const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
@@ -510,6 +605,8 @@
         case 'alert': return renderQueue({ ...S.queue, current: payload });
         case 'poll': return renderPoll(payload);
         case 'battle': return renderBattle(payload);
+        case 'songs': return renderSongs(payload);
+        case 'ai': return addAi(payload);
         case 'goals':
           if (!dirty) {
             S.config.goals = payload;

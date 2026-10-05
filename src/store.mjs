@@ -3,6 +3,9 @@
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DEFAULT_POINT_RATES } from './stats.mjs';
+import { DEFAULT_AI } from './ai.mjs';
+import { DEFAULT_SONGS } from './songs.mjs';
+import { DEFAULT_KEYBOARD } from './keyboard.mjs';
 
 export const DEFAULT_CONFIG = {
   settings: {
@@ -14,6 +17,9 @@ export const DEFAULT_CONFIG = {
     bannedWords: '',
     pointRates: DEFAULT_POINT_RATES,
     alertMergeWindow: true,
+    ai: DEFAULT_AI,
+    songs: DEFAULT_SONGS,
+    keyboard: DEFAULT_KEYBOARD,
   },
   rules: [
     {
@@ -81,6 +87,46 @@ export const DEFAULT_CONFIG = {
       trigger: { type: 'chat', command: '!points,!очки' },
       cooldown: { perUser: 20 },
       actions: [{ type: 'alert', text: '⭐ {nickname}: {points} очков', duration: 3, style: 'blue' }],
+    },
+    {
+      id: 'r-ai',
+      name: '🤖 Вопрос ИИ: !ai / !вопрос',
+      enabled: true,
+      trigger: { type: 'chat', command: '!ai,!вопрос,!бот' },
+      cooldown: { perUser: 60, global: 5 },
+      actions: [{ type: 'ai', prompt: '{args}', alert: true, speak: true }],
+    },
+    {
+      id: 'r-ai-question',
+      name: '🤖 ИИ отвечает на вопросы (функция «Вопросы» TikTok)',
+      enabled: true,
+      trigger: { type: 'question' },
+      cooldown: { global: 10 },
+      actions: [{ type: 'ai', prompt: '{text}', alert: true, speak: true }],
+    },
+    {
+      id: 'r-song-bump',
+      name: '🎵 Подарок от 5💎 поднимает песню зрителя в очереди',
+      enabled: true,
+      trigger: { type: 'gift', minDiamonds: 5 },
+      actions: [{ type: 'songBump', amount: 1 }],
+    },
+    {
+      id: 'r-keys-rose',
+      name: '🎮 Роза = прыжок (пробел)',
+      enabled: false,
+      trigger: { type: 'gift', giftName: 'Rose' },
+      repeat: 'perCount',
+      maxRepeat: 10,
+      actions: [{ type: 'keys', keys: 'space', holdMs: 80 }],
+    },
+    {
+      id: 'r-keys-chat',
+      name: '🎮 Чат управляет: !left / !right',
+      enabled: false,
+      trigger: { type: 'chat', command: '!left,!лево' },
+      cooldown: { perUser: 3 },
+      actions: [{ type: 'keys', keys: 'a', holdMs: 400 }],
     },
   ],
   goals: [

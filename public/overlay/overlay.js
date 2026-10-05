@@ -277,6 +277,81 @@
 
   W.audio = { init() {} };
 
+  W.songs = {
+    init(state) {
+      this.n = Number(params.get('n')) || 5;
+      this.songs(state.songs);
+    },
+    songs(snap) {
+      if (!snap) return;
+      const label = (x) => esc(x.title || (x.videoId ? 'YouTube-трек' : x.query));
+      const c = snap.current;
+      root.innerHTML = `<div class="songs">${c ? `<div class="np"><span class="eq"><i></i><i></i><i></i></span><div><div class="t shadow">${label(c)}</div><div class="by">заказал ${esc(c.nickname)}</div></div></div>` : '<div class="np idle shadow">🎵 Закажи песню: !sr название</div>'}${snap.queue
+        .slice(0, this.n)
+        .map((x, i) => `<div class="next"><b>${i + 1}</b> ${label(x)} <span>— ${esc(x.nickname)}</span></div>`)
+        .join('')}</div>`;
+    },
+  };
+
+  W.player = {
+    init(state) {
+      root.innerHTML = '<div id="yt"></div>';
+      if (params.get('video') === '0') root.style.opacity = '0';
+      this.pending = state.songs?.current || null;
+      window.onYouTubeIframeAPIReady = () => {
+        this.yt = new YT.Player('yt', {
+          width: Number(params.get('width')) || 640,
+          height: Number(params.get('height')) || 360,
+          playerVars: { autoplay: 1, controls: 0, rel: 0 },
+          events: {
+            onReady: () => this.play(this.pending),
+            onStateChange: (e) => {
+              if (e.data === YT.PlayerState.PLAYING && this.cur) {
+                const title = this.yt.getVideoData?.().title;
+                if (title && title !== this.cur.title) post('/api/songs/title', { id: this.cur.id, title });
+              }
+              if (e.data === YT.PlayerState.ENDED) this.advance();
+            },
+            onError: () => this.advance(),
+          },
+        });
+      };
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      document.head.append(tag);
+    },
+    // expectId makes the server ignore duplicate "next" calls from several player instances.
+    advance() {
+      if (this.cur) post('/api/songs/next', { expectId: this.cur.id });
+    },
+    play(song) {
+      this.pending = song;
+      if (!this.yt?.loadVideoById) return;
+      if (song?.id === this.cur?.id) return;
+      this.cur = song;
+      if (song?.videoId) this.yt.loadVideoById(song.videoId);
+      else this.yt.stopVideo();
+    },
+    songs(snap) {
+      this.play(snap.current);
+    },
+  };
+
+  W.ai = {
+    init() {
+      this.sec = Number(params.get('sec')) || 12;
+    },
+    ai(a) {
+      root.innerHTML = `<div class="aicard">${img(a.avatar, 'avatar')}<div><div class="q shadow"><b>${esc(a.nickname)}:</b> ${esc(a.question)}</div><div class="a">🤖 ${esc(a.answer)}</div></div></div>`;
+      clearTimeout(this.t);
+      this.t = setTimeout(() => root.firstChild?.classList.add('out'), this.sec * 1000);
+    },
+  };
+
+  function post(path, body) {
+    fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).catch(() => {});
+  }
+
   // ---------------- transport ----------------
   const w = W[widget] || W.alerts;
   let first = true;

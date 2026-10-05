@@ -22,6 +22,9 @@
   <button data-tab="rules">⚡ Правила</button>
   <button data-tab="goals">🎯 Цели</button>
   <button data-tab="games">🎡 Игры</button>
+  <button data-tab="songs">🎵 Песни</button>
+  <button data-tab="ai">🤖 ИИ</button>
+  <button data-tab="keyboard">🎮 Клавиатура</button>
   <button data-tab="viewers">⭐ Зрители</button>
   <button data-tab="overlays">🖥 Оверлеи</button>
   <button data-tab="test">🧪 Тест</button>
@@ -99,6 +102,93 @@
         </form>
         <p class="muted">Очки = алмазы подарков команды. Зрители могут вступить командой <code>!team1</code> / <code>!team2</code> — тогда любой их подарок идёт в зачёт команды.</p>
         <div id="battleState"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SONGS -->
+  <section id="tab-songs" class="tab">
+    <div class="grid2">
+      <div class="card">
+        <div class="card-h"><h3>🎵 Сейчас играет</h3><div class="btns"><button id="songNext" class="primary">⏭ Следующая</button><button id="songClear" class="danger">Очистить очередь</button></div></div>
+        <div id="songCurrent" class="now-playing muted">Ничего не играет</div>
+        <form id="songAdd" class="inline"><input name="text" placeholder="Добавить: название или ссылка YouTube"><button>+</button></form>
+        <h4>Очередь</h4>
+        <div id="songQueue" class="list"></div>
+      </div>
+      <div class="card">
+        <h3>Настройки заказа песен</h3>
+        <form id="songsForm">
+          <label class="check"><input type="checkbox" name="enabled"> Принимать заказы из чата</label>
+          <div class="grid2 tight">
+            <label>Команда заказа<input name="requestCommand"></label>
+            <label>Что играет<input name="currentCommand"></label>
+            <label>Отменить свой заказ<input name="removeCommand"></label>
+            <label>Пропуск (модераторы)<input name="skipCommand"></label>
+            <label>Песен на зрителя<input name="maxPerUser" type="number"></label>
+            <label>Размер очереди<input name="maxQueue" type="number"></label>
+            <label>Цена в очках<input name="cost" type="number"></label>
+          </div>
+          <label class="check"><input type="checkbox" name="youtubeOnly"> Только ссылки YouTube</label>
+          <label class="check"><input type="checkbox" name="autoplay"> Автоматически запускать первую песню</label>
+          <button class="save">💾 Сохранить</button>
+        </form>
+        <p class="muted">Проигрыватель: добавьте в OBS оверлей <code>?w=player</code> (YouTube-ссылки играют сами и переключаются по окончании). Обычные названия показываются в очереди — их включаете вы. Подарок от 5💎 поднимает песню зрителя (правило «Песни»). Сабы попадают в очередь с приоритетом.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- AI -->
+  <section id="tab-ai" class="tab">
+    <div class="grid2">
+      <form id="aiForm" class="card">
+        <h3>🤖 ИИ отвечает на вопросы зрителей (Claude)</h3>
+        <label class="check"><input type="checkbox" name="enabled"> Включить</label>
+        <label>Ключ Anthropic API (пусто = переменная ANTHROPIC_API_KEY)<input name="apiKey" type="password" autocomplete="off"></label>
+        <div class="grid2 tight">
+          <label>Модель<input name="model"></label>
+          <label>Глубина размышлений<select name="effort"><option value="low">low — быстро</option><option value="medium">medium</option><option value="high">high — точнее</option></select></label>
+          <label>Запросов в минуту (макс.)<input name="maxPerMinute" type="number"></label>
+          <label>Длина ответа, символов<input name="maxAnswerChars" type="number"></label>
+        </div>
+        <label>Характер бота (системная инструкция)<textarea name="persona" rows="4"></textarea></label>
+        <label>Что бот знает о стриме (игра, расписание, правила, ссылки)<textarea name="streamInfo" rows="3" placeholder="Например: сегодня играем в Minecraft, стримы каждый день в 20:00 МСК"></textarea></label>
+        <button class="save">💾 Сохранить</button>
+        <p class="muted">Зрители спрашивают командой <code>!ai вопрос</code> / <code>!вопрос</code> (правило с кулдауном 60 с на зрителя) или через «Вопросы» TikTok. Ответ показывается алертом, озвучивается и выводится в оверлей <code>?w=ai</code>. Запросы идут по одному, с лимитом в минуту — расходы под контролем.</p>
+      </form>
+      <div class="card">
+        <h3>Проверить</h3>
+        <form id="aiAsk" class="inline"><input name="question" placeholder="Задайте вопрос как зритель…" value="Во что ты сегодня играешь?"><button class="primary">Спросить</button></form>
+        <div id="aiAnswer" class="muted" style="margin-top:10px"></div>
+        <h4>Последние ответы</h4>
+        <div id="aiLog" class="feed small"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- KEYBOARD -->
+  <section id="tab-keyboard" class="tab">
+    <div class="grid2">
+      <form id="kbForm" class="card">
+        <h3>🎮 Управление игрой с клавиатуры</h3>
+        <p class="muted">Подарки и команды чата нажимают клавиши на этом компьютере — в окне, которое сейчас активно (ваша игра). Добавьте действие «🎮 Нажать клавиши» в правило.</p>
+        <label class="check"><input type="checkbox" name="enabled"> Разрешить нажатия клавиш</label>
+        <div class="grid3 tight">
+          <label>Нажатий в секунду (макс.)<input name="maxStepsPerSec" type="number"></label>
+          <label>Очередь нажатий (макс.)<input name="maxQueue" type="number"></label>
+          <label>Макс. удержание, мс<input name="maxHoldMs" type="number"></label>
+        </div>
+        <button class="save">💾 Сохранить</button>
+        <h4>Формат клавиш</h4>
+        <p class="muted"><code>w</code> · <code>space</code> · <code>ctrl+shift+a</code> · последовательность <code>w, w, space</code> · стрелки <code>up down left right</code> · <code>enter esc tab shift ctrl alt</code> · <code>f1…f12</code> · <code>num0…num9</code> · мышь <code>lmb rmb mmb</code>.</p>
+        <p class="muted">Windows: нажатия через SendInput со скан-кодами — работают в большинстве игр (игра от администратора требует запуска TikLive от администратора). Linux: нужен <code>xdotool</code>. macOS: без удержания и мыши, нужен доступ «Универсальный доступ».</p>
+      </form>
+      <div class="card">
+        <button id="kbStop" class="panic">🛑 АВАРИЙНАЯ ОСТАНОВКА</button>
+        <p class="muted">Очищает очередь и отпускает все зажатые клавиши. В настольной версии — также <code>Ctrl+Shift+F12</code> из любой программы.</p>
+        <h3>Тест</h3>
+        <form id="kbTest" class="inline"><input name="keys" placeholder="клавиши" value="space"><input name="holdMs" type="number" value="100" style="width:90px" title="удержание, мс"><button>▶ Нажать через 3 с</button></form>
+        <div id="kbState" class="muted" style="margin-top:8px"></div>
       </div>
     </div>
   </section>

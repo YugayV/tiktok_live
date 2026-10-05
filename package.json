@@ -4,17 +4,71 @@
   "private": true,
   "description": "TikLive Studio — interactive TikTok LIVE toolkit: alerts, rules engine, goals, games, TTS and OBS automation",
   "type": "module",
-  "main": "server.mjs",
+  "main": "electron/main.mjs",
   "scripts": {
     "start": "node server.mjs",
     "demo": "node server.mjs --demo",
-    "test": "node --test test/*.test.mjs"
+    "desktop": "electron .",
+    "desktop:demo": "electron . --demo",
+    "test": "node --test test/*.test.mjs",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist:linux": "electron-builder --linux"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
     "tiktok-live-connector": "^2.5.0",
     "ws": "^8.18.0"
-  }
+  },
+  "devDependencies": {
+    "electron": "^44.5.1",
+    "electron-builder": "^26.15.3"
+  },
+  "author": "TikLive Studio",
+  "build": {
+    "appId": "app.tiklive.studio",
+    "productName": "TikLive Studio",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "server.mjs",
+      "src/**",
+      "public/**",
+      "electron/**",
+      "package.json",
+      "build/icon.png"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.entertainment",
+      "icon": "build/icon.png"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "AudioVideo",
+      "icon": "build/icon.png"
+    },
+    "publish": []
+  },
+  "desktopName": "tiklive-studio.desktop"
 }

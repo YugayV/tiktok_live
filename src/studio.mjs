@@ -12,11 +12,14 @@ import { TikTokSource } from './tiktok.mjs';
 import { ObsClient } from './obs.mjs';
 import { render } from './template.mjs';
 import { normalize } from './normalize.mjs';
+import { AiResponder } from './ai.mjs';
+import { SongQueue } from './songs.mjs';
+import { KeyController, createOsDriver } from './keyboard.mjs';
 
 const DEDUPE_WINDOW_MS = 1500;
 
 export class Studio {
-  constructor({ dataDir, broadcast = () => {}, fetchImpl = globalThis.fetch } = {}) {
+  constructor({ dataDir, broadcast = () => {}, fetchImpl = globalThis.fetch, keyDriver, createAiClient } = {}) {
     this.broadcast = broadcast;
     this.fetch = fetchImpl;
     this.config = new JsonStore(dataDir && join(dataDir, 'config.json'), DEFAULT_CONFIG);
@@ -27,6 +30,9 @@ export class Studio {
     this.sim = new Simulator((ev) => this.handleEvent(ev));
     this.source = new TikTokSource();
     this.obs = new ObsClient();
+    this.ai = new AiResponder({ getConfig: () => this.cfg.settings.ai, ...(createAiClient ? { createClient: createAiClient } : {}) });
+    this.songs = new SongQueue({ getConfig: () => this.cfg.settings.songs });
+    this.keys = new KeyController({ driver: keyDriver || createOsDriver(), getConfig: () => this.cfg.settings.keyboard });
     this.poll = null;
     this.battle = null;
     this.recentKeys = new Map();
@@ -123,6 +129,7 @@ export class Studio {
     }
 
     if (ev.type === 'chat') {
+      if (this.handleSongCommand(ev)) return;
       if (this.poll?.vote(ev.user, ev.text)) this.broadcast('poll', this.poll.snapshot());
       if (this.cfg.settings.tts.readAllChat && !ev.text.startsWith('!')) this.speak(`${ev.user.nickname}: ${ev.text}`);
     }
@@ -143,14 +150,14 @@ export class Studio {
     }
   }
 
-  censor(text) {
+  censor(text, { stripLinks = true } = {}) {
     const words = String(this.cfg.settings.bannedWords || '')
       .split(',')
       .map((w) => w.trim())
       .filter(Boolean);
     let out = String(text);
     for (const w of words) out = out.replace(new RegExp(w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '***');
-    return out.replace(/https?:\/\/\S+/gi, '[ссылка]');
+    return stripLinks ? out.replace(/https?:\/\/\S+/gi, '[ссылка]') : out;
   }
 
   speak(text) {
@@ -207,6 +214,18 @@ export class Studio {
         case 'webhook':
           this.webhook(action, ev);
           break;
+        case 'ai':
+          this.answerWithAi(render(action.prompt || '{args}', ev) || ev.text, ev, action);
+          break;
+        case 'keys':
+          this.keys.enqueue(action);
+          break;
+        case 'songBump':
+          if (this.songs.bump(ev.user.uniqueId, Number(action.amount) || 1)) this.broadcastSongs();
+          break;
+        case 'songSkip':
+          this.songNext();
+          break;
         case 'overlay':
           this.broadcast('custom', { widget: action.widget, payload: render(action.payload, ev) });
           break;
@@ -236,6 +255,100 @@ export class Studio {
     } finally {
       clearTimeout(t);
     }
+  }
+
+  // --- AI answers ----------------------------------------------------------
+  async answerWithAi(question, ev, action = {}) {
+    try {
+      const answer = await this.ai.ask(question, ev.user);
+      if (!answer) return;
+      const clean = this.censor(answer);
+      this.logLine(`🤖 ${ev.user.nickname}: ${question} → ${clean}`);
+      this.broadcast('ai', { question: this.censor(question), answer: clean, nickname: ev.user.nickname, avatar: ev.user.avatar, ts: Date.now() });
+      if (action.alert !== false)
+        this.queue.push({ id: `${ev.id}-ai`, text: `🤖 @${ev.user.nickname}, ${clean}`, avatar: ev.user.avatar, style: 'blue', duration: Math.min(15, 4 + clean.length / 20), priority: 1 });
+      if (action.speak) this.speak(clean);
+    } catch (err) {
+      this.logLine(`🤖 Ошибка ИИ: ${err?.status ? `HTTP ${err.status} ` : ''}${err?.message || err}`);
+    }
+  }
+
+  // --- song requests -------------------------------------------------------
+  broadcastSongs() {
+    this.broadcast('songs', this.songs.snapshot());
+  }
+
+  matchCommand(text, list) {
+    const lt = text.trim().toLowerCase();
+    for (const c of String(list || '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean))
+      if (lt === c || lt.startsWith(c + ' ')) return text.trim().slice(c.length).trim();
+    return null;
+  }
+
+  songNotice(text) {
+    this.queue.push({ id: `song-${Date.now()}`, text, style: 'blue', duration: 4, priority: 0 });
+  }
+
+  // Built-in chat commands for the song queue. Returns true when the message was a song command.
+  handleSongCommand(ev) {
+    const cfg = this.cfg.settings.songs;
+    if (!cfg?.enabled) return false;
+    const u = ev.user;
+    let args = this.matchCommand(ev.text, cfg.requestCommand);
+    if (args !== null) {
+      if (cfg.cost && this.getPoints(u.uniqueId) < cfg.cost) {
+        this.songNotice(`🎵 @${u.nickname}, заказ стоит ${cfg.cost} очков`);
+        return true;
+      }
+      const res = this.songs.request(u, this.censor(args, { stripLinks: false }), { priority: u.isSubscriber ? 1 : 0 });
+      if (res.ok) {
+        if (cfg.cost) this.addPoints(u, -cfg.cost);
+        this.songNotice(`🎵 ${u.nickname} заказал: ${res.song.title || 'YouTube-трек'} (#${res.position})`);
+        this.logLine(`🎵 Заказ: ${res.song.query} ← ${u.nickname}`);
+        this.fetchSongTitle(res.song);
+        if (!this.songs.current && cfg.autoplay) this.songNext();
+        else this.broadcastSongs();
+      } else this.songNotice(`🎵 @${u.nickname}: ${res.error}`);
+      return true;
+    }
+    if (this.matchCommand(ev.text, cfg.currentCommand) !== null) {
+      const c = this.songs.current;
+      this.songNotice(c ? `🎵 Сейчас: ${c.title || c.query} (от ${c.nickname})` : '🎵 Сейчас ничего не играет');
+      return true;
+    }
+    if (this.matchCommand(ev.text, cfg.removeCommand) !== null) {
+      if (this.songs.removeLastOf(u.uniqueId)) this.broadcastSongs();
+      return true;
+    }
+    if (this.matchCommand(ev.text, cfg.skipCommand) !== null && u.isModerator) {
+      this.songNext();
+      return true;
+    }
+    return false;
+  }
+
+  // Fills in real titles for YouTube requests (oEmbed needs no API key). Best effort.
+  async fetchSongTitle(song) {
+    if (!song?.videoId || !this.fetch) return;
+    try {
+      const url = `https://www.youtube.com/oembed?format=json&url=${encodeURIComponent('https://www.youtube.com/watch?v=' + song.videoId)}`;
+      const res = await this.fetch(url, { signal: AbortSignal.timeout(5000) });
+      if (!res.ok) return;
+      const { title } = await res.json();
+      if (title) {
+        this.songs.setTitle(song.id, this.censor(title));
+        this.broadcastSongs();
+      }
+    } catch {
+      // offline or blocked: the player overlay reports the title once the video starts
+    }
+  }
+
+  songNext() {
+    const song = this.songs.next();
+    this.broadcastSongs();
+    if (song) this.logLine(`▶ Играет: ${song.title || song.query} (от ${song.nickname})`);
+    return song;
   }
 
   // --- games -------------------------------------------------------------
@@ -340,6 +453,8 @@ export class Studio {
       battle: this.battle?.snapshot() || null,
       queue: this.queue.snapshot(),
       simulator: this.sim.running,
+      songs: this.songs.snapshot(),
+      keyboard: this.keys.snapshot(),
       obs: this.obs.ready,
     };
   }
@@ -347,6 +462,7 @@ export class Studio {
   async shutdown() {
     clearInterval(this.statsTimer);
     this.sim.stop();
+    await this.keys.stop();
     await this.source.disconnect();
     this.obs.close();
     this.config.flush();

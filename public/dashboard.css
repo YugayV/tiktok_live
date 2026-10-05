@@ -75,3 +75,8 @@ canvas#chart { width: 100%; }
 #toast div.err { border-color: var(--accent); }
 @keyframes tin { from { transform: translateY(20px); opacity: 0; } }
 @media (max-width: 600px) { main, header, nav { padding-left: 12px; padding-right: 12px; } .grid2, .grid3, .overlay-list { grid-template-columns: 1fr; } }
+
+.now-playing { font-size: 18px; padding: 10px; background: var(--panel2); border-radius: 10px; margin-bottom: 6px; }
+.now-playing b { color: var(--accent2); }
+.list .r .x { padding: 2px 8px; margin-left: 8px; }
+button.panic { width: 100%; padding: 18px; font-size: 20px; font-weight: 900; background: #c1121f; border-color: #ff4d6d; color: #fff; margin-bottom: 8px; }

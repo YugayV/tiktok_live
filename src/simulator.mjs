@@ -3,7 +3,7 @@
 import { normalize } from './normalize.mjs';
 
 const NAMES = ['Алина', 'Max_Power', 'котик_2007', 'Dasha.dance', 'GamerPro', 'Света', 'NightOwl', 'Тимур', 'lucky_star', 'Ваня'];
-const CHAT = ['Привет! 👋', 'Лучший стрим!', '!tts всем привет', 'Откуда ты?', '1', '2', '!points', 'ахахах 😂', 'Давай танец!', '!team1', '!team2'];
+const CHAT = ['Привет! 👋', 'Лучший стрим!', '!tts всем привет', 'Откуда ты?', '1', '2', '!points', 'ахахах 😂', 'Давай танец!', '!team1', '!team2', '!sr Imagine Dragons - Believer', '!sr https://youtu.be/dQw4w9WgXcQ', '!ai какая сегодня игра?'];
 export const GIFTS = [
   { name: 'Rose', diamonds: 1, type: 1 },
   { name: 'TikTok', diamonds: 1, type: 1 },
