@@ -1,4 +1,4 @@
-# Build from the tiklive/ directory:  docker build -f cloud/Dockerfile -t tiklive-cloud .
+# Build from the repository root:  docker build -f cloud/Dockerfile -t tiklive-cloud .
 FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production

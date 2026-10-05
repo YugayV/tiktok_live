@@ -39,19 +39,19 @@
 
 Локально:
 ```bash
-cd tiklive
+cd tiklive-studio
 ANTHROPIC_API_KEY=sk-ant-... LS_STORE_ID=12345 LS_PRODUCT_ID=67890 npm run cloud
 ```
 
 Docker на любом VPS (за HTTPS-прокси, например Caddy или nginx):
 ```bash
-cd tiklive
+cd tiklive-studio
 docker build -f cloud/Dockerfile -t tiklive-cloud .
 docker run -d --restart=always -p 8080:8080 -v tiklive-data:/data \
   -e ANTHROPIC_API_KEY=sk-ant-... -e LS_STORE_ID=12345 -e LS_PRODUCT_ID=67890 tiklive-cloud
 ```
 
-Render или Railway: создайте Web Service из репозитория. Root directory — `tiklive`, Dockerfile — `cloud/Dockerfile`. Задайте переменные из таблицы и подключите постоянный диск в `/data`, иначе счётчики будут сбрасываться при каждом деплое.
+Render или Railway: создайте Web Service из репозитория. Root directory — корень репозитория, Dockerfile — `cloud/Dockerfile`. Задайте переменные из таблицы и подключите постоянный диск в `/data`, иначе счётчики будут сбрасываться при каждом деплое.
 
 ## Подключение приложения
 

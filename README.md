@@ -5,7 +5,7 @@
 ## Быстрый старт
 
 ```bash
-cd tiklive
+cd tiklive-studio
 npm install
 npm run demo        # демо-режим: симулятор событий, можно настраивать без эфира
 # или
@@ -23,7 +23,7 @@ npm run dist:mac         # .dmg (собирается на macOS)
 npm run dist:linux       # .AppImage
 ```
 
-Готовые установщики для Windows, macOS и Linux собирает GitHub Actions (`.github/workflows/tiklive-desktop.yml`) при каждом изменении папки `tiklive/` или по кнопке «Run workflow»; скачать их можно во вкладке Actions → артефакты. Сборки не подписаны, поэтому при первом запуске Windows SmartScreen и macOS Gatekeeper покажут предупреждение.
+Готовые установщики для Windows, macOS и Linux собирает GitHub Actions (`.github/workflows/desktop.yml`) при каждом push или по кнопке «Run workflow»; скачать их можно во вкладке Actions → артефакты. Сборки не подписаны, поэтому при первом запуске Windows SmartScreen и macOS Gatekeeper покажут предупреждение.
 
 В настольной версии закрытие окна сворачивает программу в трей: сервер и оверлеи OBS продолжают работать. Настройки хранятся в папке пользователя (`%APPDATA%/TikLive Studio/data` в Windows). Горячая клавиша **Ctrl+Shift+F12** экстренно останавливает нажатия клавиш из любой программы.
 
