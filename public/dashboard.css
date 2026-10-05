@@ -80,3 +80,22 @@ canvas#chart { width: 100%; }
 .now-playing b { color: var(--accent2); }
 .list .r .x { padding: 2px 8px; margin-left: 8px; }
 button.panic { width: 100%; padding: 18px; font-size: 20px; font-weight: 900; background: #c1121f; border-color: #ff4d6d; color: #fff; margin-bottom: 8px; }
+
+.plan-banner { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 8px 20px; font-weight: 600; flex-wrap: wrap; text-align: center; }
+.plan-banner.trial { background: linear-gradient(90deg, #3a1d5c, #1d3a5c); }
+.plan-banner.expired { background: #5c1d2a; }
+.plan-banner .btn { padding: 4px 12px; }
+.hidden { display: none !important; }
+nav button.locked::after { content: ' 🔒'; }
+nav button.pro-tab { color: #ffc93c; }
+.pro-card h2 { font-size: 26px; }
+.pro-status { font-size: 16px; margin: 8px 0 12px; }
+.pro-status b { color: var(--ok); }
+.pro-status.expired b { color: var(--accent); }
+.price { font-size: 16px; margin-bottom: 12px; } .price b { font-size: 32px; color: #ffc93c; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+.btn.big { padding: 12px 22px; font-size: 17px; margin-bottom: 8px; }
+.btn.disabled { opacity: .5; pointer-events: none; }
+table.plans { width: 100%; border-collapse: collapse; }
+table.plans td, table.plans th { padding: 7px 6px; border-bottom: 1px solid var(--line); text-align: center; }
+table.plans td:first-child, table.plans th:first-child { text-align: left; }

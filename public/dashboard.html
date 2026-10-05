@@ -17,18 +17,21 @@
   <div class="status"><span id="statusDot" class="dot"></span><span id="statusText">offline</span></div>
 </header>
 
+<div id="planBanner" class="plan-banner hidden"></div>
+
 <nav id="tabs">
   <button data-tab="home" class="active">📊 Обзор</button>
   <button data-tab="rules">⚡ Правила</button>
   <button data-tab="goals">🎯 Цели</button>
-  <button data-tab="games">🎡 Игры</button>
-  <button data-tab="songs">🎵 Песни</button>
-  <button data-tab="ai">🤖 ИИ</button>
-  <button data-tab="keyboard">🎮 Клавиатура</button>
+  <button data-tab="games" data-pro="games">🎡 Игры</button>
+  <button data-tab="songs" data-pro="songs">🎵 Песни</button>
+  <button data-tab="ai" data-pro="ai">🤖 ИИ</button>
+  <button data-tab="keyboard" data-pro="keyboard">🎮 Клавиатура</button>
   <button data-tab="viewers">⭐ Зрители</button>
   <button data-tab="overlays">🖥 Оверлеи</button>
   <button data-tab="test">🧪 Тест</button>
   <button data-tab="settings">⚙ Настройки</button>
+  <button data-tab="pro" class="pro-tab">💎 Pro</button>
 </nav>
 
 <main>
@@ -226,6 +229,29 @@
         <p class="muted">Генерирует поток лайков, чата, подарков и подписок — чтобы настроить оверлеи без реального эфира.</p>
         <label>Интенсивность <input id="simIntensity" type="range" min="0.2" max="5" step="0.2" value="1"></label>
         <button id="simToggle" class="primary">▶ Запустить</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRO -->
+  <section id="tab-pro" class="tab">
+    <div class="grid2">
+      <div class="card pro-card">
+        <h2>💎 TikLive Pro</h2>
+        <div id="proStatus" class="pro-status"></div>
+        <div class="price"><b id="proPrice">$8</b> <span class="muted">— первые 7 дней бесплатно, без карты</span></div>
+        <a id="buyBtn" class="btn primary big" target="_blank" rel="noopener">Оформить подписку</a>
+        <p class="muted">Оплата картой через Lemon Squeezy (налоги и чеки — на их стороне). После оплаты ключ лицензии придёт на e-mail. Отменить подписку можно в любой момент по ссылке из письма — Pro будет работать до конца оплаченного месяца.</p>
+        <h3>Активировать ключ</h3>
+        <form id="licenseForm" class="inline"><input name="key" placeholder="XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX" autocomplete="off"><button class="primary">Активировать</button></form>
+        <div class="btns" style="margin-top:8px"><button id="licRefresh" type="button">🔄 Проверить подписку</button><button id="licDeactivate" type="button" class="danger">Отвязать ключ от этого ПК</button></div>
+      </div>
+      <div class="card">
+        <h3>Что входит</h3>
+        <table class="plans">
+          <thead><tr><th></th><th>Бесплатно</th><th>Pro</th></tr></thead>
+          <tbody id="planTable"></tbody>
+        </table>
       </div>
     </div>
   </section>

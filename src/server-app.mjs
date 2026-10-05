@@ -68,12 +68,18 @@ function buildRoutes(studio, broadcast) {
       studio.addPoints({ uniqueId: b.uniqueId, nickname: b.uniqueId }, Number(b.amount) || 0);
       return { points: studio.getPoints(b.uniqueId) };
     },
+    'GET /api/license': () => studio.license.status(),
+    'POST /api/license/activate': (b) => studio.license.activate(b.key),
+    'POST /api/license/refresh': () => studio.license.validate(),
+    'POST /api/license/deactivate': () => studio.license.deactivate(),
     'POST /api/ai/ask': async (b) => {
+      studio.requirePro('ai');
       const answer = await studio.ai.ask(String(b.question || ''), { nickname: 'стример' });
       if (!answer) throw new Error('Нет ответа: ИИ выключен, нет ключа или превышен лимит запросов');
       return { answer };
     },
     'POST /api/songs/add': (b) => {
+      studio.requirePro('songs');
       const res = studio.songs.request({ uniqueId: '__host__', nickname: b.nickname || 'Стример' }, String(b.text || ''), { priority: 100 });
       if (!res.ok) throw new Error(res.error);
       studio.fetchSongTitle(res.song);
@@ -90,6 +96,7 @@ function buildRoutes(studio, broadcast) {
     'POST /api/songs/clear': () => (studio.songs.clear(), studio.broadcastSongs(), { ok: true }),
     'POST /api/songs/title': (b) => (studio.songs.setTitle(b.id, b.title), studio.broadcastSongs(), { ok: true }),
     'POST /api/keys/test': (b) => {
+      studio.requirePro('keyboard');
       if (!studio.cfg.settings.keyboard.enabled) throw new Error('Управление клавиатурой выключено в настройках');
       return { queued: studio.keys.enqueue(b) };
     },
@@ -106,6 +113,7 @@ export function startServer({ port = 8787, host = '127.0.0.1', dataDir, demo = f
   };
   const studio = new Studio({ dataDir, broadcast });
   const routes = buildRoutes(studio, broadcast);
+  studio.license.startAutoValidate();
 
   async function serveStatic(res, pathname) {
     if (pathname === '/') pathname = '/dashboard.html';
@@ -131,7 +139,7 @@ export function startServer({ port = 8787, host = '127.0.0.1', dataDir, demo = f
       if (out && out.__raw !== undefined) return send(res, 200, out.__raw, out.type);
       send(res, 200, out ?? { ok: true });
     } catch (err) {
-      send(res, 400, { error: err?.message || String(err) });
+      send(res, err?.status === 402 ? 402 : 400, { error: err?.message || String(err), ...(err?.feature ? { feature: err.feature } : {}) });
     }
   });
 

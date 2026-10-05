@@ -568,6 +568,48 @@
     if (k) $('#kbState').textContent = `Драйвер: ${k.driver}`;
   }
 
+  // ---------- license / Pro ----------
+  const FREE_ROWS = ['Алерты, очередь, антиспам', 'Правила, цели, очки зрителей', 'Оверлеи чата, топа, счётчиков', 'Аналитика и экспорт CSV', 'Симулятор эфира', 'Озвучка (TTS)'];
+  function renderLicense(l) {
+    if (!l) return;
+    S.license = l;
+    const banner = $('#planBanner');
+    const buy = l.checkoutUrl ? `<a class="btn primary" href="${esc(l.checkoutUrl)}" target="_blank" rel="noopener">Оформить Pro — ${esc(l.priceLabel)}</a>` : '';
+    banner.className = `plan-banner ${l.plan}`;
+    if (l.plan === 'trial') banner.innerHTML = `🎁 Пробный период Pro: осталось ${l.trialDaysLeft} дн. Затем ${esc(l.priceLabel)}. ${buy}`;
+    else if (l.plan === 'expired') banner.innerHTML = `⏳ Пробный период закончился — ${Object.values(l.features).join(', ')} отключены. ${buy}`;
+    else banner.classList.add('hidden');
+    const locked = l.plan === 'expired';
+    $$('#tabs [data-pro]').forEach((b) => b.classList.toggle('locked', locked));
+
+    const st = $('#proStatus');
+    st.className = `pro-status ${l.plan}`;
+    if (l.plan === 'pro') st.innerHTML = `Статус: <b>Pro активен</b> · ключ ${esc(l.key)}${l.customerEmail ? ' · ' + esc(l.customerEmail) : ''}${l.expiresAt ? ' · до ' + new Date(l.expiresAt).toLocaleDateString('ru-RU') : ''}`;
+    else if (l.plan === 'trial') st.innerHTML = `Статус: <b>пробный период</b> — до ${new Date(l.trialEndsAt).toLocaleDateString('ru-RU')} (${l.trialDaysLeft} дн.)`;
+    else st.innerHTML = `Статус: <b>пробный период закончился</b>${l.key ? ` · ключ ${esc(l.key)}: ${esc(l.licenseStatus || 'не подтверждён')}` : ''}`;
+    $('#proPrice').textContent = l.priceLabel;
+    const btn = $('#buyBtn');
+    if (l.checkoutUrl) {
+      btn.href = l.checkoutUrl;
+      btn.classList.remove('disabled');
+      btn.textContent = l.plan === 'pro' ? 'Управление подпиской' : 'Оформить подписку';
+    } else {
+      btn.removeAttribute('href');
+      btn.classList.add('disabled');
+      btn.textContent = 'Оплата ещё не настроена (checkoutUrl)';
+    }
+    $('#licDeactivate').classList.toggle('hidden', !l.key);
+    $('#planTable').innerHTML =
+      FREE_ROWS.map((r) => `<tr><td>${r}</td><td>✅</td><td>✅</td></tr>`).join('') +
+      Object.values(l.features).map((r) => `<tr><td>${esc(r)}</td><td>${l.trialDays} дней</td><td>✅</td></tr>`).join('');
+  }
+  $('#licenseForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    call('/api/license/activate', { key: e.target.key.value }, '💎 Pro активирован!').then((r) => r && (renderLicense(r), (e.target.key.value = '')));
+  });
+  $('#licRefresh').onclick = () => call('/api/license/refresh', {}).then((r) => r && (renderLicense(r), toast(r.plan === 'pro' ? 'Подписка активна' : 'Подписка не активна')));
+  $('#licDeactivate').onclick = () => confirm('Отвязать ключ от этого компьютера? Его можно будет активировать на другом.') && call('/api/license/deactivate', {}, 'Ключ отвязан').then(renderLicense);
+
   // ---------- live socket ----------
   function hydrate(state) {
     S = state;
@@ -586,6 +628,7 @@
     renderSim(state.simulator);
     renderSettings();
     renderSongs(state.songs);
+    renderLicense(state.license);
     renderKeyboard(state.keyboard);
     fillForm($('#songsForm'), state.config.settings.songs || {});
     fillForm($('#aiForm'), state.config.settings.ai || {});
@@ -606,6 +649,7 @@
         case 'poll': return renderPoll(payload);
         case 'battle': return renderBattle(payload);
         case 'songs': return renderSongs(payload);
+        case 'license': return renderLicense(payload);
         case 'ai': return addAi(payload);
         case 'goals':
           if (!dirty) {

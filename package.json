@@ -70,5 +70,12 @@
     },
     "publish": []
   },
-  "desktopName": "tiklive-studio.desktop"
+  "desktopName": "tiklive-studio.desktop",
+  "tiklive": {
+    "checkoutUrl": "",
+    "storeId": null,
+    "productId": null,
+    "priceLabel": "$8 / месяц",
+    "trialDays": 7
+  }
 }

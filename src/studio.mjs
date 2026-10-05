@@ -1,7 +1,9 @@
 // Studio wires every subsystem together: event source -> stats/points/goals/games -> rules -> actions.
 // It knows nothing about HTTP; the server only calls its methods and forwards `broadcast` messages.
 
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { RuleEngine } from './rules.mjs';
 import { AlertQueue } from './queue.mjs';
 import { SessionStats, applyGoals, pointsFor } from './stats.mjs';
@@ -15,11 +17,32 @@ import { normalize } from './normalize.mjs';
 import { AiResponder } from './ai.mjs';
 import { SongQueue } from './songs.mjs';
 import { KeyController, createOsDriver } from './keyboard.mjs';
+import { License, PRO_FEATURES } from './license.mjs';
+
+// Store/product ids and checkout link of the subscription live in package.json → "tiklive".
+function packageLicenseConfig() {
+  try {
+    const pkg = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8'));
+    return pkg.tiklive || {};
+  } catch {
+    return {};
+  }
+}
+
+const ACTION_FEATURE = { ai: 'ai', keys: 'keyboard', songBump: 'songs', songSkip: 'songs', wheel: 'games', obs: 'obs', webhook: 'webhook' };
+
+export class ProRequiredError extends Error {
+  constructor(feature) {
+    super(`🔒 «${PRO_FEATURES[feature] || feature}» доступно в TikLive Pro. Пробный период закончился — оформите подписку на вкладке «💎 Pro».`);
+    this.status = 402;
+    this.feature = feature;
+  }
+}
 
 const DEDUPE_WINDOW_MS = 1500;
 
 export class Studio {
-  constructor({ dataDir, broadcast = () => {}, fetchImpl = globalThis.fetch, keyDriver, createAiClient } = {}) {
+  constructor({ dataDir, broadcast = () => {}, fetchImpl = globalThis.fetch, keyDriver, createAiClient, license } = {}) {
     this.broadcast = broadcast;
     this.fetch = fetchImpl;
     this.config = new JsonStore(dataDir && join(dataDir, 'config.json'), DEFAULT_CONFIG);
@@ -33,6 +56,9 @@ export class Studio {
     this.ai = new AiResponder({ getConfig: () => this.cfg.settings.ai, ...(createAiClient ? { createClient: createAiClient } : {}) });
     this.songs = new SongQueue({ getConfig: () => this.cfg.settings.songs });
     this.keys = new KeyController({ driver: keyDriver || createOsDriver(), getConfig: () => this.cfg.settings.keyboard });
+    this.license = license || new License({ file: dataDir && join(dataDir, 'license.json'), config: packageLicenseConfig(), fetchImpl });
+    this.license.onChange((st) => this.broadcast('license', st));
+    this.lockedNoticeAt = new Map();
     this.poll = null;
     this.battle = null;
     this.recentKeys = new Map();
@@ -166,7 +192,25 @@ export class Studio {
     if (clean.trim()) this.broadcast('tts', { text: clean, lang: tts.lang, rate: tts.rate, volume: tts.volume });
   }
 
+  // Throws for Pro features once the trial is over (used by API routes and game starters).
+  requirePro(feature) {
+    if (!this.license.can(feature)) throw new ProRequiredError(feature);
+  }
+
+  // Inside the event pipeline locked features are skipped quietly, with a log line at most once a minute.
+  allowed(feature) {
+    if (this.license.can(feature)) return true;
+    const last = this.lockedNoticeAt.get(feature) || 0;
+    if (Date.now() - last > 60000) {
+      this.lockedNoticeAt.set(feature, Date.now());
+      this.logLine(`🔒 ${PRO_FEATURES[feature]}: нужна подписка Pro`);
+    }
+    return false;
+  }
+
   runAction(action, ev, rule) {
+    const feature = ACTION_FEATURE[action.type];
+    if (feature && !this.allowed(feature)) return;
     try {
       switch (action.type) {
         case 'alert':
@@ -292,7 +336,7 @@ export class Studio {
   // Built-in chat commands for the song queue. Returns true when the message was a song command.
   handleSongCommand(ev) {
     const cfg = this.cfg.settings.songs;
-    if (!cfg?.enabled) return false;
+    if (!cfg?.enabled || !this.license.can('songs')) return false;
     const u = ev.user;
     let args = this.matchCommand(ev.text, cfg.requestCommand);
     if (args !== null) {
@@ -353,6 +397,7 @@ export class Studio {
 
   // --- games -------------------------------------------------------------
   spinWheel(by = '') {
+    this.requirePro('games');
     const segments = this.cfg.wheel.segments;
     const index = pickWeighted(segments);
     if (index < 0) return null;
@@ -363,6 +408,7 @@ export class Studio {
   }
 
   startPoll({ question, options, durationSec }) {
+    this.requirePro('games');
     const opts = (Array.isArray(options) ? options : String(options).split(','))
       .map((s) => String(s).trim())
       .filter(Boolean);
@@ -385,6 +431,7 @@ export class Studio {
   }
 
   startBattle({ teams, durationSec }) {
+    this.requirePro('games');
     this.battle = new GiftBattle({ teams, durationSec: Number(durationSec) || 180 });
     this.broadcast('battle', this.battle.snapshot());
     clearTimeout(this.battleTimer);
@@ -415,6 +462,7 @@ export class Studio {
   }
 
   async connectObs() {
+    this.requirePro('obs');
     const { url, password } = this.cfg.settings.obs;
     await this.obs.connect(url, password);
     this.logLine('OBS подключен');
@@ -443,6 +491,7 @@ export class Studio {
 
   state() {
     return {
+      license: this.license.status(),
       status: this.status,
       config: this.cfg,
       stats: this.stats.snapshot(),
@@ -460,6 +509,7 @@ export class Studio {
   }
 
   async shutdown() {
+    this.license.stop();
     clearInterval(this.statsTimer);
     this.sim.stop();
     await this.keys.stop();
