@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TikLive Studio</title>
+<link rel="stylesheet" href="/dashboard.css">
+</head>
+<body>
+<header>
+  <div class="brand"><span class="logo">◆</span> TikLive <b>Studio</b></div>
+  <form id="connectForm" class="connect">
+    <input id="username" placeholder="@username стримера" autocomplete="off">
+    <button class="primary" id="connectBtn">Подключить</button>
+    <button type="button" id="disconnectBtn">Отключить</button>
+  </form>
+  <div class="status"><span id="statusDot" class="dot"></span><span id="statusText">offline</span></div>
+</header>
+
+<nav id="tabs">
+  <button data-tab="home" class="active">📊 Обзор</button>
+  <button data-tab="rules">⚡ Правила</button>
+  <button data-tab="goals">🎯 Цели</button>
+  <button data-tab="games">🎡 Игры</button>
+  <button data-tab="viewers">⭐ Зрители</button>
+  <button data-tab="overlays">🖥 Оверлеи</button>
+  <button data-tab="test">🧪 Тест</button>
+  <button data-tab="settings">⚙ Настройки</button>
+</nav>
+
+<main>
+  <!-- HOME -->
+  <section id="tab-home" class="tab active">
+    <div class="kpis" id="kpis"></div>
+    <div class="grid2">
+      <div class="card">
+        <div class="card-h"><h3>Активность (💎 / мин)</h3><span class="muted" id="rateInfo"></span></div>
+        <canvas id="chart" height="140"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-h"><h3>Очередь алертов</h3>
+          <div class="btns"><button id="pauseBtn">⏸ Пауза</button><button id="skipBtn">⏭ Пропустить</button><button id="clearBtn">🗑</button></div>
+        </div>
+        <div id="queueInfo" class="muted"></div>
+        <form id="ttsForm" class="inline"><input id="ttsText" placeholder="Озвучить текст (TTS)…"><button>🔊</button></form>
+      </div>
+    </div>
+    <div class="grid3">
+      <div class="card"><h3>Лента событий</h3><div id="feed" class="feed"></div></div>
+      <div class="card"><h3>🏆 Топ донатеров</h3><div id="topGifters" class="list"></div></div>
+      <div class="card"><h3>Журнал срабатываний</h3><div id="log" class="feed small"></div></div>
+    </div>
+    <div class="row-end"><a class="btn" href="/api/export.csv" download="tiklive-session.csv">⬇ Экспорт CSV</a><button id="resetBtn" class="danger">Сбросить сессию</button></div>
+  </section>
+
+  <!-- RULES -->
+  <section id="tab-rules" class="tab">
+    <div class="card-h"><h2>Правила: событие → действия</h2><div class="btns"><button id="addRule" class="primary">+ Правило</button><button id="saveRules" class="save">💾 Сохранить</button></div></div>
+    <p class="muted">Плейсхолдеры: <code>{nickname}</code> <code>{username}</code> <code>{giftName}</code> <code>{count}</code> <code>{diamonds}</code> <code>{likes}</code> <code>{totalLikes}</code> <code>{text}</code> <code>{args}</code> <code>{points}</code>. Правила с большим приоритетом проверяются первыми.</p>
+    <div id="rules"></div>
+  </section>
+
+  <!-- GOALS -->
+  <section id="tab-goals" class="tab">
+    <div class="card-h"><h2>Цели стрима</h2><div class="btns"><button id="addGoal" class="primary">+ Цель</button><button id="saveGoals" class="save">💾 Сохранить</button></div></div>
+    <p class="muted">Цели считаются автоматически. При достижении цели срабатывают правила с триггером «Цель достигнута».</p>
+    <div id="goals"></div>
+  </section>
+
+  <!-- GAMES -->
+  <section id="tab-games" class="tab">
+    <div class="grid3">
+      <div class="card">
+        <h3>🎡 Колесо фортуны</h3>
+        <div id="wheelSegs"></div>
+        <div class="btns"><button id="addSeg">+ Сектор</button><button id="saveWheel" class="save">💾</button><button id="spinWheel" class="primary">Крутить!</button></div>
+        <p class="muted">Совет: добавьте правило «подарок → Крутить колесо».</p>
+      </div>
+      <div class="card">
+        <h3>📊 Голосование в чате</h3>
+        <form id="pollForm">
+          <label>Вопрос<input name="question" value="Что делаем дальше?"></label>
+          <label>Варианты (через запятую)<input name="options" value="Играем, Танцуем, Поём"></label>
+          <label>Длительность, сек<input name="durationSec" type="number" value="60"></label>
+          <div class="btns"><button class="primary">Старт</button><button type="button" id="endPoll">Завершить</button></div>
+        </form>
+        <p class="muted">Зрители голосуют сообщением <code>1</code>, <code>2</code>… или <code>!vote 2</code>. Один голос на зрителя.</p>
+        <div id="pollState"></div>
+      </div>
+      <div class="card">
+        <h3>⚔ Битва подарков</h3>
+        <form id="battleForm">
+          <div class="grid2 tight">
+            <label>Команда 1<input name="n1" value="Розы"></label><label>Подарки<input name="g1" value="Rose"></label>
+            <label>Команда 2<input name="n2" value="TikTok"></label><label>Подарки<input name="g2" value="TikTok"></label>
+          </div>
+          <label>Длительность, сек<input name="durationSec" type="number" value="180"></label>
+          <div class="btns"><button class="primary">Старт</button><button type="button" id="endBattle">Завершить</button></div>
+        </form>
+        <p class="muted">Очки = алмазы подарков команды. Зрители могут вступить командой <code>!team1</code> / <code>!team2</code> — тогда любой их подарок идёт в зачёт команды.</p>
+        <div id="battleState"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- VIEWERS -->
+  <section id="tab-viewers" class="tab">
+    <div class="grid2">
+      <div class="card"><h3>⭐ Очки зрителей (сохраняются между стримами)</h3><div id="topPoints" class="list"></div>
+        <form id="pointsForm" class="inline"><input name="uniqueId" placeholder="username"><input name="amount" type="number" placeholder="+/- очков"><button>Начислить</button></form>
+      </div>
+      <div class="card"><h3>Активные зрители</h3>
+        <div class="grid2 tight"><div><h4>❤️ Лайки</h4><div id="topLikers" class="list"></div></div><div><h4>💬 Чат</h4><div id="topChatters" class="list"></div></div></div>
+        <h4>💖 Новые подписчики</h4><div id="newFollowers" class="muted"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- OVERLAYS -->
+  <section id="tab-overlays" class="tab">
+    <p class="muted">Добавьте в OBS / TikTok LIVE Studio источник «Браузер» с нужным адресом. Фон прозрачный. Для звука и TTS включите «Управлять аудио через OBS».</p>
+    <div id="overlayList" class="overlay-list"></div>
+  </section>
+
+  <!-- TEST -->
+  <section id="tab-test" class="tab">
+    <div class="grid2">
+      <div class="card">
+        <h3>Отправить тестовое событие</h3>
+        <div class="btns wrap" id="simBtns"></div>
+        <form id="simGift" class="inline"><input name="giftName" placeholder="Подарок (Rose, Galaxy…)" value="Galaxy"><input name="count" type="number" value="1" style="width:80px"><input name="nickname" placeholder="ник" value="Tester"><button>🎁 Подарок</button></form>
+        <form id="simChat" class="inline"><input name="text" placeholder="Сообщение в чат" value="!tts привет всем"><input name="nickname" placeholder="ник" value="Tester"><button>💬 Чат</button></form>
+      </div>
+      <div class="card">
+        <h3>Симулятор эфира</h3>
+        <p class="muted">Генерирует поток лайков, чата, подарков и подписок — чтобы настроить оверлеи без реального эфира.</p>
+        <label>Интенсивность <input id="simIntensity" type="range" min="0.2" max="5" step="0.2" value="1"></label>
+        <button id="simToggle" class="primary">▶ Запустить</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section id="tab-settings" class="tab">
+    <form id="settingsForm" class="grid2">
+      <div class="card">
+        <h3>Подключение</h3>
+        <label class="check"><input type="checkbox" name="autoReconnect"> Автопереподключение (и автостарт)</label>
+        <label>Euler Stream API key (необязательно, повышает лимиты)<input name="signApiKey" type="password"></label>
+        <h3>OBS WebSocket</h3>
+        <label>URL<input name="obs.url"></label>
+        <label>Пароль<input name="obs.password" type="password"></label>
+        <button type="button" id="obsConnect">Подключить OBS</button> <span id="obsState" class="muted"></span>
+      </div>
+      <div class="card">
+        <h3>Озвучка (TTS)</h3>
+        <label>Язык<select name="tts.lang"><option>ru-RU</option><option>en-US</option><option>uk-UA</option><option>kk-KZ</option><option>de-DE</option><option>es-ES</option><option>tr-TR</option></select></label>
+        <label>Скорость<input name="tts.rate" type="number" step="0.1" min="0.5" max="2"></label>
+        <label>Макс. длина<input name="tts.maxLength" type="number"></label>
+        <label class="check"><input type="checkbox" name="tts.readAllChat"> Озвучивать весь чат</label>
+        <label>Запрещённые слова (через запятую, заменяются на ***)<textarea name="bannedWords" rows="2"></textarea></label>
+        <label class="check"><input type="checkbox" name="alertMergeWindow"> Склеивать одинаковые подарки в очереди (антиспам)</label>
+        <h3>Очки зрителей</h3>
+        <div class="grid3 tight">
+          <label>Сообщение<input name="pointRates.chat" type="number"></label>
+          <label>Подписка<input name="pointRates.follow" type="number"></label>
+          <label>Репост<input name="pointRates.share" type="number"></label>
+          <label>За 1💎<input name="pointRates.perDiamond" type="number"></label>
+          <label>За 100❤️<input name="pointRates.per100Likes" type="number"></label>
+          <label>Саб<input name="pointRates.subscribe" type="number"></label>
+        </div>
+      </div>
+      <div class="row-end"><button class="save">💾 Сохранить настройки</button></div>
+    </form>
+  </section>
+</main>
+<div id="toast"></div>
+<script src="/dashboard.js"></script>
+</body>
+</html>

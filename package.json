@@ -1,0 +1,20 @@
+{
+  "name": "tiklive",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TikLive Studio — interactive TikTok LIVE toolkit: alerts, rules engine, goals, games, TTS and OBS automation",
+  "type": "module",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs",
+    "demo": "node server.mjs --demo",
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "tiktok-live-connector": "^2.5.0",
+    "ws": "^8.18.0"
+  }
+}
