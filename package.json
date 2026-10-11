@@ -1,6 +1,6 @@
 {
   "name": "tiklive",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "TikLive Studio — interactive TikTok LIVE toolkit: alerts, rules engine, goals, games, TTS and OBS automation",
   "type": "module",
@@ -15,13 +15,16 @@
     "dist:win": "electron-builder --win",
     "dist:mac": "electron-builder --mac",
     "dist:linux": "electron-builder --linux",
-    "cloud": "node cloud/server.mjs"
+    "cloud": "node cloud/server.mjs",
+    "release:win": "electron-builder --win nsis --x64 --publish always",
+    "release": "electron-builder --publish always"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
+    "electron-updater": "^6.8.9",
     "tiktok-live-connector": "^2.5.0",
     "ws": "^8.18.0"
   },
@@ -47,29 +50,56 @@
     ],
     "win": {
       "target": [
-        "nsis",
-        "portable"
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "build/icon.png"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true
+      "createDesktopShortcut": true,
+      "artifactName": "TikLive-Studio-Setup.${ext}",
+      "shortcutName": "TikLive Studio",
+      "uninstallDisplayName": "TikLive Studio",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false
     },
     "mac": {
       "target": "dmg",
       "category": "public.app-category.entertainment",
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "artifactName": "TikLive-Studio.${ext}"
     },
     "linux": {
       "target": [
         "AppImage"
       ],
       "category": "AudioVideo",
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "artifactName": "TikLive-Studio.${ext}"
     },
-    "publish": []
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "YugayV",
+        "repo": "tiktok_live",
+        "releaseType": "release"
+      }
+    ],
+    "portable": {
+      "artifactName": "TikLive-Studio-Portable.${ext}"
+    }
   },
   "desktopName": "tiklive-studio.desktop",
   "tiklive": {
@@ -79,5 +109,10 @@
     "productId": null,
     "priceLabel": "$8 / месяц",
     "trialDays": 7
+  },
+  "homepage": "https://yugayv.github.io/tiktok_live/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/YugayV/tiktok_live.git"
   }
 }

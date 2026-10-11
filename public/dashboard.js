@@ -614,6 +614,28 @@
   $('#licRefresh').onclick = () => call('/api/license/refresh', {}).then((r) => r && (renderLicense(r), toast(r.plan === 'pro' ? 'Подписка активна' : 'Подписка не активна')));
   $('#licDeactivate').onclick = () => confirm('Отвязать ключ от этого компьютера? Его можно будет активировать на другом.') && call('/api/license/deactivate', {}, 'Ключ отвязан').then(renderLicense);
 
+  // ---------- app updates ----------
+  function renderUpdate(u, version, canInstall) {
+    if (version) $('#appVersion').textContent = `v${version}`;
+    if (canInstall !== undefined) S.canInstall = canInstall;
+    const b = $('#updateBanner');
+    if (!u) return;
+    if (u.state === 'downloading') b.innerHTML = `⬇ Загружается обновление ${u.version ? 'v' + esc(u.version) : ''} <span class="bar"><i style="width:${u.percent || 0}%"></i></span> ${u.percent || 0}%`;
+    else if (u.state === 'ready') b.innerHTML = `✅ Версия ${esc(u.version)} готова. <button id="updInstall" class="primary">Перезапустить и обновить</button> <span class="muted">или установится при следующем закрытии</span>`;
+    else if (u.state === 'available-web') b.innerHTML = `🆕 Вышла версия ${esc(u.version)}. <a class="btn primary" href="${esc(u.url)}" target="_blank" rel="noopener">Скачать</a>`;
+    else return b.classList.add('hidden');
+    b.classList.remove('hidden');
+    $('#updInstall')?.addEventListener('click', () => call('/api/update/install', {}, 'Перезапуск…'));
+  }
+  $('#appVersion').addEventListener('click', () =>
+    call('/api/update/check', {}).then((u) => {
+      if (!u) return;
+      renderUpdate(u);
+      const msg = { latest: 'У вас последняя версия', checking: 'Проверяю…', dev: 'Режим разработки: обновления отключены', portable: 'Портативная версия обновляется вручную — скачайте новую с сайта', error: `Ошибка проверки: ${u.error || ''}` }[u.state];
+      if (msg) toast(msg, u.state === 'error');
+    }),
+  );
+
   // ---------- live socket ----------
   function hydrate(state) {
     S = state;
@@ -633,6 +655,7 @@
     renderSettings();
     renderSongs(state.songs);
     renderLicense(state.license);
+    renderUpdate(state.app?.update, state.app?.version, state.app?.canInstall);
     renderKeyboard(state.keyboard);
     fillForm($('#songsForm'), state.config.settings.songs || {});
     fillForm($('#aiForm'), state.config.settings.ai || {});
@@ -655,6 +678,7 @@
         case 'battle': return renderBattle(payload);
         case 'songs': return renderSongs(payload);
         case 'license': return renderLicense(payload);
+        case 'update': return renderUpdate(payload);
         case 'ai': return addAi(payload);
         case 'goals':
           if (!dirty) {

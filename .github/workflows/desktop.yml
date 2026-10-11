@@ -1,10 +1,12 @@
 name: TikLive Studio desktop builds
 
+# Test builds for every branch push (artifacts only). Releases: see release.yml.
 on:
   workflow_dispatch:
   push:
-    paths:
-      - '**'
+    branches-ignore: [main]
+    tags-ignore: ['v*']
+  pull_request:
 
 jobs:
   build:

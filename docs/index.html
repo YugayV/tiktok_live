@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TikLive Studio — интерактивные эфиры TikTok LIVE</title>
+<meta name="description" content="Алерты на подарки, правила, цели, ответы ИИ, заказ песен, управление играми с подарков. Бесплатно, 7 дней Pro без карты.">
+<meta property="og:title" content="TikLive Studio">
+<meta property="og:description" content="Интерактивные эфиры TikTok LIVE: алерты, игры, ИИ, заказ песен, OBS-оверлеи.">
+<link rel="icon" href="icon.png">
+<style>
+  :root {
+    --bg: #0b0c11; --bg2: #11131b; --panel: #161925; --line: #262a3b; --text: #eef0f7; --muted: #9196ad;
+    --pink: #fe2c55; --cyan: #25f4ee; --gold: #ffc93c; --ok: #2bd67b; --radius: 18px;
+    --font: 'Segoe UI', system-ui, -apple-system, Roboto, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 var(--font); overflow-x: hidden; }
+  a { color: var(--cyan); text-decoration: none; }
+  .wrap { max-width: 1160px; margin: 0 auto; padding: 0 20px; }
+
+  header { position: sticky; top: 0; z-index: 10; background: rgba(11,12,17,.85); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+  header .wrap { display: flex; align-items: center; gap: 24px; height: 64px; }
+  .logo { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 19px; color: var(--text); }
+  .logo img { width: 30px; height: 30px; border-radius: 8px; }
+  .logo b { color: var(--cyan); }
+  nav { display: flex; gap: 22px; margin-left: auto; }
+  nav a { color: var(--muted); font-size: 15px; }
+  nav a:hover { color: var(--text); }
+
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; padding: 12px 22px; border-radius: 12px; font-weight: 700; border: 1px solid var(--line); color: var(--text); background: var(--panel); cursor: pointer; transition: transform .15s, filter .15s; }
+  .btn:hover { filter: brightness(1.15); transform: translateY(-1px); }
+  .btn.primary { background: linear-gradient(135deg, var(--pink), #ff5f7e); border: none; color: #fff; box-shadow: 0 10px 30px rgba(254,44,85,.35); }
+  .btn.big { padding: 18px 30px; font-size: 19px; border-radius: 16px; }
+  .btn.small { padding: 8px 16px; font-size: 14px; }
+
+  .hero { padding: 80px 0 60px; position: relative; overflow: hidden; isolation: isolate; }
+  .hero::before { content: ''; position: absolute; inset: -200px 0 auto; height: 600px; background: radial-gradient(closest-side, rgba(254,44,85,.25), transparent), radial-gradient(closest-side at 70% 40%, rgba(37,244,238,.18), transparent); z-index: -1; }
+  .hero .wrap { display: grid; grid-template-columns: 1.1fr 1fr; gap: 50px; align-items: center; }
+  .badge { display: inline-block; padding: 6px 12px; border-radius: 99px; background: rgba(37,244,238,.1); color: var(--cyan); font-size: 14px; font-weight: 600; margin-bottom: 18px; }
+  h1 { font-size: clamp(34px, 5vw, 56px); line-height: 1.08; margin: 0 0 18px; letter-spacing: -.5px; }
+  h1 em { font-style: normal; background: linear-gradient(90deg, var(--pink), var(--cyan)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .lead { font-size: 19px; color: var(--muted); margin: 0 0 30px; max-width: 560px; }
+  .dl { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+  .dl .meta { color: var(--muted); font-size: 14px; }
+  .dl .others { font-size: 14px; color: var(--muted); }
+  .dl .others a { margin-right: 14px; }
+
+  .mock { background: var(--panel); border: 1px solid var(--line); border-radius: 22px; padding: 18px; box-shadow: 0 30px 80px rgba(0,0,0,.5); }
+  .mock .bar { display: flex; gap: 6px; margin-bottom: 14px; } .mock .bar i { width: 11px; height: 11px; border-radius: 50%; background: #333a52; }
+  .alert { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-radius: 16px; background: linear-gradient(135deg, rgba(80,20,140,.9), rgba(254,44,85,.85)); border: 2px solid #b86bff; font-weight: 800; font-size: 20px; animation: pop 3s ease-in-out infinite; }
+  .alert span.av { width: 46px; height: 46px; border-radius: 50%; background: linear-gradient(135deg, var(--gold), var(--pink)); flex: none; }
+  @keyframes pop { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.03); } }
+  .mrow { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+  .tile { background: var(--bg2); border-radius: 14px; padding: 12px 14px; }
+  .tile .v { font-size: 24px; font-weight: 800; } .tile .l { color: var(--muted); font-size: 13px; }
+  .goal { margin-top: 12px; background: var(--bg2); border-radius: 14px; padding: 12px 14px; font-weight: 700; }
+  .goal .track { height: 12px; border-radius: 6px; background: rgba(255,255,255,.1); margin-top: 8px; overflow: hidden; }
+  .goal .track i { display: block; height: 100%; width: 72%; background: linear-gradient(90deg, var(--cyan), var(--pink)); }
+
+  section { padding: 70px 0; }
+  h2 { font-size: clamp(28px, 3.5vw, 40px); margin: 0 0 12px; text-align: center; }
+  .sub { text-align: center; color: var(--muted); margin: 0 auto 44px; max-width: 640px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; }
+  .card .ic { font-size: 28px; margin-bottom: 8px; }
+  .card h3 { margin: 0 0 6px; font-size: 18px; }
+  .card p { margin: 0; color: var(--muted); font-size: 15px; }
+  .card .pro { display: inline-block; font-size: 11px; font-weight: 800; color: var(--gold); border: 1px solid var(--gold); border-radius: 6px; padding: 0 6px; margin-left: 6px; vertical-align: middle; }
+
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; counter-reset: s; }
+  .step { position: relative; padding-left: 64px; }
+  .step::before { counter-increment: s; content: counter(s); position: absolute; left: 0; top: 0; width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; font-weight: 900; font-size: 20px; background: linear-gradient(135deg, var(--pink), var(--cyan)); color: #fff; }
+  .step h3 { margin: 4px 0 6px; } .step p { margin: 0; color: var(--muted); }
+  code { background: var(--bg2); border: 1px solid var(--line); padding: 1px 6px; border-radius: 6px; color: var(--cyan); font-size: 14px; word-break: break-all; }
+
+  .prices { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 18px; max-width: 820px; margin: 0 auto; }
+  .price { background: var(--panel); border: 1px solid var(--line); border-radius: 22px; padding: 28px; display: flex; flex-direction: column; }
+  .price.pro { border: 2px solid var(--gold); box-shadow: 0 0 60px rgba(255,201,60,.12); }
+  .price h3 { margin: 0; font-size: 22px; }
+  .price .amount { font-size: 44px; font-weight: 900; margin: 10px 0 2px; } .price .amount small { font-size: 16px; color: var(--muted); font-weight: 600; }
+  .price .note { color: var(--muted); font-size: 14px; margin-bottom: 18px; }
+  .price ul { list-style: none; padding: 0; margin: 0 0 24px; flex: 1; }
+  .price li { padding: 6px 0 6px 28px; position: relative; } .price li::before { content: '✓'; position: absolute; left: 0; color: var(--ok); font-weight: 900; }
+
+  .install { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
+  .install ol { margin: 0; padding-left: 22px; color: var(--muted); } .install li { margin: 6px 0; } .install li b { color: var(--text); }
+  .smart { margin-top: 12px; padding: 12px 14px; border-radius: 12px; background: #10204a; border: 1px solid #23408a; font-size: 14px; color: #c9d6ff; }
+
+  details { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px 20px; margin-bottom: 10px; }
+  summary { cursor: pointer; font-weight: 700; list-style: none; } summary::after { content: '+'; float: right; color: var(--muted); } details[open] summary::after { content: '–'; }
+  details p { color: var(--muted); margin: 10px 0 0; }
+  .faq { max-width: 820px; margin: 0 auto; }
+
+  .cta { text-align: center; padding: 70px 20px; border-radius: 28px; background: linear-gradient(135deg, rgba(254,44,85,.18), rgba(37,244,238,.12)); border: 1px solid var(--line); }
+  footer { border-top: 1px solid var(--line); padding: 30px 0; color: var(--muted); font-size: 14px; }
+  footer .wrap { display: flex; gap: 20px; flex-wrap: wrap; justify-content: space-between; }
+  footer a { color: var(--muted); margin-right: 16px; } footer a:hover { color: var(--text); }
+
+  @media (max-width: 860px) { .hero .wrap { grid-template-columns: 1fr; } nav { display: none; } header .btn { margin-left: auto; } .hero { padding-top: 50px; } }
+  @media (max-width: 480px) { .btn.big { width: 100%; } .mrow { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <a class="logo" href="#"><img src="icon.png" alt="">TikLive <b>Studio</b></a>
+    <nav><a href="#features">Возможности</a><a href="#how">Как работает</a><a href="#pricing">Цены</a><a href="#install">Установка</a><a href="#faq">Вопросы</a></nav>
+    <a class="btn small primary" href="#download" data-dl>Скачать</a>
+  </div>
+</header>
+
+<section class="hero" id="download">
+  <div class="wrap">
+    <div>
+      <span class="badge">🎁 Бесплатно · 7 дней Pro без карты</span>
+      <h1>Ваш TikTok LIVE станет <em>интерактивным</em></h1>
+      <p class="lead">Алерты на подарки, цели, игры, ответы ИИ на вопросы зрителей, заказ песен и управление игрой с подарков — в одной программе. Подключение по нику, без логина и пароля TikTok.</p>
+      <div class="dl">
+        <a class="btn big primary" id="dlMain" data-dl href="https://github.com/YugayV/tiktok_live/releases/latest/download/TikLive-Studio-Setup.exe">⬇ Скачать для Windows</a>
+        <div class="meta" id="dlMeta">Windows 10/11 · 64-bit · автообновления</div>
+        <div class="others">Другие версии:
+          <a id="dlPortable" href="https://github.com/YugayV/tiktok_live/releases/latest/download/TikLive-Studio-Portable.exe">Windows без установки</a>
+          <a id="dlMac" href="https://github.com/YugayV/tiktok_live/releases/latest/download/TikLive-Studio.dmg">macOS</a>
+          <a id="dlLinux" href="https://github.com/YugayV/tiktok_live/releases/latest/download/TikLive-Studio.AppImage">Linux</a>
+        </div>
+      </div>
+    </div>
+    <div class="mock" aria-hidden="true">
+      <div class="bar"><i></i><i></i><i></i></div>
+      <div class="alert"><span class="av"></span>🚀 МЕГА ДОНАТ! Алина — 1000💎</div>
+      <div class="mrow">
+        <div class="tile"><div class="v">💎 12 480</div><div class="l">алмазов за эфир</div></div>
+        <div class="tile"><div class="v">👀 1 204</div><div class="l">зрителей сейчас</div></div>
+      </div>
+      <div class="goal">🎯 Цель: новая камера <span style="float:right">7 200 / 10 000</span><div class="track"><i></i></div></div>
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <h2>Всё для живого эфира</h2>
+    <p class="sub">Работает с OBS, Streamlabs и TikTok LIVE Studio: оверлеи добавляются как обычный «Браузер»-источник.</p>
+    <div class="grid">
+      <div class="card"><div class="ic">🔔</div><h3>Алерты с очередью</h3><p>Крупные донаты идут вне очереди, одинаковые подарки склеиваются в «×N», дубли отсекаются.</p></div>
+      <div class="card"><div class="ic">⚡</div><h3>Правила «событие → действие»</h3><p>Подарок, команда в чате, лайки, подписка — запускают алерт, звук, озвучку, OBS-сцену или webhook.</p></div>
+      <div class="card"><div class="ic">🎯</div><h3>Цели и счётчики</h3><p>Прогресс по алмазам, лайкам и подписчикам с анимацией и конфетти при достижении.</p></div>
+      <div class="card"><div class="ic">⭐</div><h3>Очки зрителей</h3><p>Зрители копят очки за активность и тратят на команды. Очки сохраняются между стримами.</p></div>
+      <div class="card"><div class="ic">🤖</div><h3>Ответы ИИ <span class="pro">PRO</span></h3><p>Бот отвечает на вопросы зрителей коротко и на их языке, озвучивает ответ и выводит на экран.</p></div>
+      <div class="card"><div class="ic">🎵</div><h3>Заказ песен <span class="pro">PRO</span></h3><p><code>!sr</code> + название или ссылка YouTube. Встроенный плеер, лимиты, приоритет за подарки.</p></div>
+      <div class="card"><div class="ic">🎮</div><h3>Управление игрой <span class="pro">PRO</span></h3><p>Роза — прыжок, Galaxy — взрыв: подарки и чат нажимают клавиши в вашей игре.</p></div>
+      <div class="card"><div class="ic">🎡</div><h3>Колесо, голосования, битвы <span class="pro">PRO</span></h3><p>Колесо фортуны, голосование в чате, битва подарков двух команд.</p></div>
+      <div class="card"><div class="ic">📊</div><h3>Аналитика</h3><p>Алмазы в минуту, пик зрителей, топ донатеров и лайкеров, экспорт в CSV.</p></div>
+      <div class="card"><div class="ic">🗣</div><h3>Озвучка (TTS)</h3><p>Команда <code>!tts</code>, фильтр запрещённых слов и ссылок, выбор языка.</p></div>
+      <div class="card"><div class="ic">🧪</div><h3>Тест без эфира</h3><p>Симулятор генерирует подарки, лайки и чат — настройте всё заранее.</p></div>
+      <div class="card"><div class="ic">🔄</div><h3>Автообновления</h3><p>Новые версии загружаются сами и ставятся при следующем запуске.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <h2>Запуск за 3 минуты</h2>
+    <p class="sub">Никаких паролей от TikTok — только ник стримера.</p>
+    <div class="steps">
+      <div class="step"><h3>Скачайте и установите</h3><p>Обычная установка Windows. Программа живёт в трее и обновляется сама.</p></div>
+      <div class="step"><h3>Введите @ник</h3><p>Нажмите «Подключить», когда эфир идёт. Или включите симулятор на вкладке «Тест».</p></div>
+      <div class="step"><h3>Добавьте оверлей</h3><p>В OBS или TikTok LIVE Studio: источник «Браузер» → <code>http://127.0.0.1:8787/overlay/?w=alerts</code></p></div>
+    </div>
+  </div>
+</section>
+
+<section id="pricing">
+  <div class="wrap">
+    <h2>Цены</h2>
+    <p class="sub">Основные функции бесплатны навсегда. Pro — первые 7 дней бесплатно, без карты.</p>
+    <div class="prices">
+      <div class="price">
+        <h3>Бесплатно</h3>
+        <div class="amount">$0</div>
+        <div class="note">навсегда</div>
+        <ul><li>Алерты, очередь, антиспам</li><li>Правила, цели, очки зрителей</li><li>Оверлеи чата, топа и счётчиков</li><li>Озвучка (TTS)</li><li>Аналитика и экспорт</li><li>Симулятор эфира</li></ul>
+        <a class="btn" data-dl href="#download">Скачать</a>
+      </div>
+      <div class="price pro">
+        <h3>Pro 💎</h3>
+        <div class="amount">$8 <small>/ месяц</small></div>
+        <div class="note">7 дней бесплатно · отмена в любой момент</div>
+        <ul><li>Всё из бесплатного</li><li>Ответы ИИ на вопросы зрителей</li><li>Заказ песен с плеером YouTube</li><li>Управление игрой с подарков</li><li>Колесо, голосования, битвы</li><li>Автоматизация OBS и webhooks</li></ul>
+        <a class="btn primary" id="buyPro" href="#download">Попробовать бесплатно</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <h2>Установка</h2>
+    <p class="sub">Если браузер или Windows предупреждают о файле — это нормально для новой программы без платной подписи кода.</p>
+    <div class="install">
+      <div class="card">
+        <h3>🪟 Windows 10 / 11</h3>
+        <ol>
+          <li>Нажмите <b>«Скачать для Windows»</b> — загрузится <code>TikLive-Studio-Setup.exe</code>.</li>
+          <li>Если Edge/Chrome пишет «файл скачивают редко» — <b>⋯ → Сохранить</b> (или «Сохранить всё равно»).</li>
+          <li>Запустите файл. Если появится синее окно «Windows защитила компьютер» — <b>Подробнее → Выполнить в любом случае</b>.</li>
+          <li>Выберите папку → <b>Установить</b>. Ярлык появится на рабочем столе.</li>
+          <li>Разрешите доступ в брандмауэре для <b>частных сетей</b> — это нужно оверлеям в OBS.</li>
+        </ol>
+        <div class="smart">Обновления ставятся автоматически: при выходе новой версии в программе появится кнопка «Перезапустить и обновить».</div>
+      </div>
+      <div class="card">
+        <h3>🍎 macOS · 🐧 Linux</h3>
+        <ol>
+          <li><b>macOS:</b> откройте <code>.dmg</code>, перетащите программу в «Программы». При первом запуске — правый клик → <b>Открыть</b>.</li>
+          <li><b>Linux:</b> скачайте <code>.AppImage</code>, дайте права на запуск (<code>chmod +x</code>) и запустите.</li>
+          <li>Для управления играми на Linux установите <code>xdotool</code>, на macOS разрешите «Универсальный доступ».</li>
+        </ol>
+        <h3 style="margin-top:18px">📦 Без установки</h3>
+        <ol><li>Версия «Windows без установки» запускается из любой папки, но обновляется вручную — скачайте новую с этого сайта.</li></ol>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap faq">
+    <h2>Вопросы</h2>
+    <details><summary>Нужен логин и пароль от TikTok?</summary><p>Нет. Программа читает публичные события эфира по нику стримера (@username). Пароль и вход в аккаунт не нужны.</p></details>
+    <details><summary>Это безопасно? Почему Windows предупреждает?</summary><p>Предупреждение SmartScreen появляется у любой новой программы без платного сертификата подписи кода. Установщик собирается из открытого исходного кода на GitHub.</p></details>
+    <details><summary>Работает с TikTok LIVE Studio и OBS?</summary><p>Да. Оверлеи — это обычные веб-страницы, их добавляют как источник «Браузер» в OBS, Streamlabs или TikTok LIVE Studio. Фон прозрачный.</p></details>
+    <details><summary>Что будет после 7 дней пробного периода?</summary><p>Бесплатные функции продолжат работать. Pro-функции (ИИ, песни, клавиатура, игры, OBS, webhooks) отключатся, пока вы не оформите подписку.</p></details>
+    <details><summary>Как отменить подписку?</summary><p>По ссылке в письме об оплате, в любой момент. Pro будет работать до конца оплаченного месяца.</p></details>
+    <details><summary>Программа должна быть открыта во время эфира?</summary><p>Да, она получает события эфира и отдаёт их оверлеям. Закрытие окна сворачивает её в трей — оверлеи продолжают работать.</p></details>
+    <details><summary>Какие требования к компьютеру?</summary><p>Windows 10/11 64-bit (или macOS, Linux), 4 ГБ ОЗУ, около 400 МБ на диске, интернет.</p></details>
+  </div>
+</section>
+
+<section>
+  <div class="wrap cta">
+    <h2>Сделайте следующий эфир живее</h2>
+    <p class="sub" style="margin-bottom:26px">Бесплатно. 7 дней Pro без карты.</p>
+    <a class="btn big primary" data-dl href="https://github.com/YugayV/tiktok_live/releases/latest/download/TikLive-Studio-Setup.exe">⬇ Скачать TikLive Studio</a>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div>© TikLive Studio. Не связан с TikTok и ByteDance. TikTok — товарный знак ByteDance Ltd.</div>
+    <div><a href="terms.html">Условия и возврат</a><a href="privacy.html">Конфиденциальность</a><a href="https://github.com/YugayV/tiktok_live">GitHub</a></div>
+  </div>
+</footer>
+
+<script>
+  // Config: checkout link of the Pro subscription (Lemon Squeezy). Empty = the button leads to the download.
+  const REPO = 'YugayV/tiktok_live';
+  const CHECKOUT_URL = '';
+  const LATEST = `https://github.com/${REPO}/releases/latest/download/`;
+
+  // Main button follows the visitor's OS.
+  const ua = navigator.userAgent;
+  const os = /Mac/i.test(navigator.platform || ua) && !/iPhone|iPad/.test(ua) ? 'mac' : /Linux/i.test(ua) && !/Android/i.test(ua) ? 'linux' : /Android|iPhone|iPad/i.test(ua) ? 'mobile' : 'win';
+  const main = { win: ['TikLive-Studio-Setup.exe', '⬇ Скачать для Windows', 'Windows 10/11 · 64-bit · автообновления'], mac: ['TikLive-Studio.dmg', '⬇ Скачать для macOS', 'macOS 11 и новее'], linux: ['TikLive-Studio.AppImage', '⬇ Скачать для Linux', 'AppImage · x64'] }[os === 'mobile' ? 'win' : os];
+  const dl = document.getElementById('dlMain');
+  dl.href = LATEST + main[0];
+  dl.textContent = main[1];
+  document.getElementById('dlMeta').textContent = os === 'mobile' ? 'Программа работает на компьютере: откройте этот сайт на ПК' : main[2];
+  document.querySelectorAll('[data-dl]').forEach((a) => { if (a !== dl && a.getAttribute('href') !== '#download') a.href = dl.href; });
+  if (CHECKOUT_URL) { const b = document.getElementById('buyPro'); b.href = CHECKOUT_URL; b.textContent = 'Оформить Pro'; b.target = '_blank'; }
+
+  // Show the current version and file size from GitHub Releases (links work even if this fails).
+  fetch(`https://api.github.com/repos/${REPO}/releases/latest`).then((r) => (r.ok ? r.json() : null)).then((rel) => {
+    if (!rel) return;
+    const asset = (rel.assets || []).find((a) => a.name === main[0]);
+    const mb = asset ? ` · ${Math.round(asset.size / 1048576)} МБ` : '';
+    const date = new Date(rel.published_at).toLocaleDateString('ru-RU');
+    document.getElementById('dlMeta').textContent = `${main[2]} · версия ${rel.tag_name.replace(/^v/, '')} от ${date}${mb}`;
+  }).catch(() => {});
+</script>
+</body>
+</html>

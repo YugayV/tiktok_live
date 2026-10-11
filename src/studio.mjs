@@ -20,13 +20,22 @@ import { KeyController, createOsDriver } from './keyboard.mjs';
 import { License, PRO_FEATURES } from './license.mjs';
 
 // Store/product ids and checkout link of the subscription live in package.json → "tiklive".
-function packageLicenseConfig() {
+function readPackage() {
   try {
-    const pkg = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8'));
-    return pkg.tiklive || {};
+    return JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8'));
   } catch {
     return {};
   }
+}
+const PKG = readPackage();
+const packageLicenseConfig = () => PKG.tiklive || {};
+
+// "1.10.0" > "1.9.3"
+export function newerVersion(a, b) {
+  const pa = String(a).replace(/^v/, '').split('.').map(Number);
+  const pb = String(b).replace(/^v/, '').split('.').map(Number);
+  for (let i = 0; i < 3; i++) if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0);
+  return false;
 }
 
 const ACTION_FEATURE = { ai: 'ai', keys: 'keyboard', songBump: 'songs', songSkip: 'songs', wheel: 'games', obs: 'obs', webhook: 'webhook' };
@@ -64,6 +73,9 @@ export class Studio {
     this.license = license || new License({ file: dataDir && join(dataDir, 'license.json'), config: packageLicenseConfig(), fetchImpl });
     this.license.onChange((st) => this.broadcast('license', st));
     this.lockedNoticeAt = new Map();
+    this.appVersion = PKG.version || '0.0.0';
+    this.update = { state: 'unknown' };
+    this.updateHooks = { check: null, install: null };
     this.poll = null;
     this.battle = null;
     this.recentKeys = new Map();
@@ -195,6 +207,46 @@ export class Studio {
     const tts = this.cfg.settings.tts;
     const clean = this.censor(text).slice(0, tts.maxLength || 200);
     if (clean.trim()) this.broadcast('tts', { text: clean, lang: tts.lang, rate: tts.rate, volume: tts.volume });
+  }
+
+  // --- updates ---------------------------------------------------------------
+  // The Electron shell reports auto-update progress here; the dashboard shows it.
+  setUpdateStatus(patch) {
+    this.update = { ...(patch.state && patch.state !== this.update.state ? {} : this.update), ...patch, at: Date.now() };
+    this.broadcast('update', this.update);
+  }
+
+  setUpdateHooks(hooks) {
+    this.updateHooks = { ...this.updateHooks, ...hooks };
+  }
+
+  async checkForUpdates() {
+    if (this.updateHooks.check) return this.updateHooks.check();
+    return this.checkWebUpdate();
+  }
+
+  installUpdate() {
+    if (this.update.state !== 'ready' || !this.updateHooks.install) throw new Error('Обновление ещё не загружено');
+    this.updateHooks.install();
+  }
+
+  // Without the desktop shell (CLI / browser mode) there is no self-update: just point to the download page.
+  async checkWebUpdate() {
+    const pub = [].concat(PKG.build?.publish || [])[0];
+    if (!pub?.owner || !pub?.repo || !this.fetch) return;
+    try {
+      const res = await this.fetch(`https://api.github.com/repos/${pub.owner}/${pub.repo}/releases/latest`, {
+        headers: { accept: 'application/vnd.github+json' },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!res.ok) return;
+      const rel = await res.json();
+      if (rel.tag_name && newerVersion(rel.tag_name, this.appVersion))
+        this.setUpdateStatus({ state: 'available-web', version: rel.tag_name.replace(/^v/, ''), url: rel.html_url });
+      else this.setUpdateStatus({ state: 'latest' });
+    } catch {
+      // offline: try again later
+    }
   }
 
   // Throws for Pro features once the trial is over (used by API routes and game starters).
@@ -503,6 +555,7 @@ export class Studio {
   state() {
     return {
       license: this.license.status(),
+      app: { version: this.appVersion, update: this.update, canInstall: Boolean(this.updateHooks.install) },
       status: this.status,
       config: this.cfg,
       stats: this.stats.snapshot(),

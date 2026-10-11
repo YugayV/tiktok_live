@@ -1,7 +1,8 @@
 // Desktop shell: runs the TikLive server in-process and shows the dashboard in a window.
 // Overlays stay available at http://127.0.0.1:<port>/overlay/... for OBS.
 
-import { app, BrowserWindow, Tray, Menu, shell, clipboard, globalShortcut, nativeImage, dialog } from 'electron';
+import { app, BrowserWindow, Tray, Menu, shell, clipboard, globalShortcut, nativeImage, dialog, Notification } from 'electron';
+import updaterPkg from 'electron-updater';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startServer } from '../src/server-app.mjs';
@@ -9,6 +10,8 @@ import { startServer } from '../src/server-app.mjs';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PREFERRED_PORT = Number(process.env.PORT) || 8787;
 const PANIC_HOTKEY = 'CommandOrControl+Shift+F12';
+const UPDATE_CHECK_MS = 6 * 60 * 60 * 1000;
+const { autoUpdater } = updaterPkg;
 
 let win = null;
 let tray = null;
@@ -86,6 +89,39 @@ function createTray() {
   tray.on('click', showWindow);
 }
 
+// Auto-update from GitHub Releases (installer builds only: the portable .exe and dev runs can't self-update).
+function setupAutoUpdate() {
+  const studio = server.studio;
+  const canUpdate = app.isPackaged && !process.env.PORTABLE_EXECUTABLE_DIR;
+  studio.setUpdateHooks({
+    check: canUpdate ? () => autoUpdater.checkForUpdates() : null,
+    install: canUpdate
+      ? () => {
+          quitting = true;
+          setImmediate(() => autoUpdater.quitAndInstall(false, true));
+        }
+      : null,
+  });
+  if (!canUpdate) {
+    studio.setUpdateStatus({ state: app.isPackaged ? 'portable' : 'dev' });
+    return;
+  }
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true; // a downloaded update is applied on the next normal exit
+  autoUpdater.on('checking-for-update', () => studio.setUpdateStatus({ state: 'checking' }));
+  autoUpdater.on('update-not-available', () => studio.setUpdateStatus({ state: 'latest' }));
+  autoUpdater.on('update-available', (info) => studio.setUpdateStatus({ state: 'downloading', version: info.version, percent: 0 }));
+  autoUpdater.on('download-progress', (p) => studio.setUpdateStatus({ state: 'downloading', percent: Math.round(p.percent) }));
+  autoUpdater.on('update-downloaded', (info) => {
+    studio.setUpdateStatus({ state: 'ready', version: info.version });
+    if (Notification.isSupported())
+      new Notification({ title: 'TikLive Studio', body: `Версия ${info.version} загружена. Установится при следующем запуске или по кнопке в панели.` }).show();
+  });
+  autoUpdater.on('error', (err) => studio.setUpdateStatus({ state: 'error', error: String(err?.message || err).slice(0, 200) }));
+  autoUpdater.checkForUpdates().catch(() => {});
+  setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), UPDATE_CHECK_MS).unref();
+}
+
 app.on('second-instance', showWindow);
 
 app.whenReady().then(async () => {
@@ -96,6 +132,7 @@ app.whenReady().then(async () => {
     app.exit(1);
     return;
   }
+  setupAutoUpdate();
   createTray();
   createWindow();
   globalShortcut.register(PANIC_HOTKEY, panicStop);
@@ -111,5 +148,6 @@ app.on('will-quit', async (e) => {
   const s = server;
   server = null;
   await s.close().catch(() => {});
-  app.exit(0);
+  // A regular quit (not app.exit) so electron-updater can install a pending update on exit.
+  app.quit();
 });

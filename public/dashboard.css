@@ -99,3 +99,8 @@ nav button.pro-tab { color: #ffc93c; }
 table.plans { width: 100%; border-collapse: collapse; }
 table.plans td, table.plans th { padding: 7px 6px; border-bottom: 1px solid var(--line); text-align: center; }
 table.plans td:first-child, table.plans th:first-child { text-align: left; }
+
+.version { margin-left: 10px; font-size: 12px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+.update-banner { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 7px 20px; background: #12384a; font-weight: 600; flex-wrap: wrap; }
+.update-banner .bar { width: 160px; height: 8px; border-radius: 4px; background: rgba(255,255,255,.15); overflow: hidden; }
+.update-banner .bar i { display: block; height: 100%; background: var(--accent2); }

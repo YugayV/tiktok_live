@@ -69,6 +69,8 @@ function buildRoutes(studio, broadcast) {
       return { points: studio.getPoints(b.uniqueId) };
     },
     'GET /api/license': () => studio.license.status(),
+    'POST /api/update/check': async () => (await studio.checkForUpdates(), studio.update),
+    'POST /api/update/install': () => (studio.installUpdate(), { ok: true }),
     'POST /api/license/activate': (b) => studio.license.activate(b.key),
     'POST /api/license/refresh': () => studio.license.validate(),
     'POST /api/license/deactivate': () => studio.license.deactivate(),
@@ -115,6 +117,11 @@ export function startServer({ port = 8787, host = '127.0.0.1', dataDir, demo = f
   const studio = new Studio({ dataDir, broadcast });
   const routes = buildRoutes(studio, broadcast);
   studio.license.startAutoValidate();
+  // In the desktop app electron-updater does this; the CLI/browser mode only gets a "new version" notice.
+  if (!process.versions.electron) {
+    studio.checkWebUpdate();
+    setInterval(() => studio.checkWebUpdate(), 12 * 60 * 60 * 1000).unref();
+  }
 
   async function serveStatic(res, pathname) {
     if (pathname === '/') pathname = '/dashboard.html';
