@@ -17,6 +17,18 @@ const EVENT_MAP = {
   envelope: 'envelope',
 };
 
+// Turn library errors into something a streamer can act on.
+export function explainError(err) {
+  const name = err?.constructor?.name || err?.name || '';
+  const msg = String(err?.message || err || '');
+  if (name === 'UserOfflineError' || /isn't online|offline/i.test(msg)) return 'Стример сейчас не в эфире. Подключайтесь, когда эфир уже идёт — при включённом автопереподключении программа попробует снова сама.';
+  if (name === 'InvalidUniqueIdError' || /invalid value for 'uniqueId'/i.test(msg)) return 'Неверный ник. Укажите ник из ссылки на профиль: tiktok.com/@ник';
+  if (name === 'SignatureRateLimitError' || /rate.?limit|too many/i.test(msg)) return 'Достигнут лимит бесплатных подключений сервиса подписи (Euler Stream). Подождите несколько минут или укажите свой ключ Euler Stream в настройках.';
+  if (name === 'PremiumFeatureError' || /Business plan|paid plan|permission from the signature provider/i.test(msg)) return `Сервис подписи TikTok (Euler Stream) отказал: ${msg.replace(/^\[[^\]]*\]\s*/g, '')}`;
+  if (/ENOTFOUND|ECONNRESET|ETIMEDOUT|EAI_AGAIN|network/i.test(msg)) return 'Нет связи с TikTok. Проверьте интернет, VPN или брандмауэр.';
+  return msg;
+}
+
 export class TikTokSource extends EventEmitter {
   constructor() {
     super();
@@ -51,7 +63,9 @@ export class TikTokSource extends EventEmitter {
       this.conn.disconnect().catch(() => {});
     }
     const conn = new TikTokLiveConnection(this.username, {
-      enableExtendedGiftInfo: true,
+      // Must stay off: loading the gift catalogue needs a signed request that Euler Stream only
+      // allows on its paid Business plan. Gift name/price/image already arrive in every gift event.
+      enableExtendedGiftInfo: false,
       processInitialData: false,
       ...(this.signApiKey ? { signApiKey: this.signApiKey } : {}),
     });
@@ -83,7 +97,7 @@ export class TikTokSource extends EventEmitter {
       this.setState('connected', { roomId: state?.roomId });
       return state;
     } catch (err) {
-      this.setState('error', { error: err?.message || String(err) });
+      this.setState('error', { error: explainError(err) });
       this.scheduleReconnect();
       throw err;
     }
