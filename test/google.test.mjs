@@ -67,7 +67,7 @@ async function boot({ claims = {}, google = { clientId: CLIENT, clientSecret: 's
 test('web: sign in with Google creates a confirmed, password-less account; second sign-in reuses it', async (t) => {
   const h = await boot();
   t.after(() => h.cleanup());
-  assert.deepEqual(await (await h.get('/auth/providers')).json(), { google: true, signup: true });
+  assert.deepEqual(await (await h.get('/auth/providers')).json(), { google: true, tiktok: false, signup: true });
 
   const r = await h.signIn();
   assert.equal(r.loc.origin + r.loc.pathname, 'https://accounts.google.com/o/oauth2/v2/auth');

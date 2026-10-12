@@ -666,12 +666,14 @@
     const q = new URLSearchParams(location.search);
     if (q.has('verified')) toast('✅ E-mail подтверждён');
     if (q.get('verify_error')) toast(q.get('verify_error'), true);
-    if (q.has('verified') || q.has('verify_error')) history.replaceState(null, '', location.pathname);
+    if (q.get('error')) toast(q.get('error'), true);
+    if (q.get('linked') === 'tiktok') toast('✅ TikTok привязан');
+    if (['verified', 'verify_error', 'error', 'linked'].some((k) => q.has(k))) history.replaceState(null, '', location.pathname);
     if ($('#account')) return;
     const bar = document.createElement('div');
     bar.id = 'account';
     bar.className = 'account';
-    bar.innerHTML = `<span>${esc(h.email)}</span>`;
+    bar.innerHTML = `${h.tiktok?.avatar ? `<img class="avatar" src="${esc(h.tiktok.avatar)}" alt="" onerror="this.remove()">` : ''}<span>${esc(h.label || h.email)}</span>`;
     bar.append(button('Выйти', () => api('/auth/logout', {}).finally(() => (location.href = '/login'))));
     $('header').append(bar);
     $('#tabs [data-tab=keyboard]')?.remove();
@@ -713,10 +715,21 @@
     const card = document.createElement('form');
     card.className = 'card';
     // Accounts created through Google can set a password (to also log in by e-mail) without a current one.
-    card.innerHTML = h.hasPassword
+    // TikTok-only accounts have no e-mail, so a password would be useless: they sign in with TikTok.
+    card.innerHTML = !h.email
+      ? '<h3>Аккаунт</h3><p class="muted">Вы входите через TikTok. Пароль не нужен.</p>'
+      : h.hasPassword
       ? '<h3>Аккаунт</h3><label>Текущий пароль<input name="current" type="password" autocomplete="current-password" required></label><label>Новый пароль<input name="password" type="password" minlength="8" autocomplete="new-password" required></label><button class="save">Сменить пароль</button>'
       : '<h3>Аккаунт</h3><p class="muted">Вы входите через Google. Можно задать пароль, чтобы входить и по e-mail.</p><label>Пароль<input name="password" type="password" minlength="8" autocomplete="new-password" required></label><button class="save">Задать пароль</button>';
     if (h.googleLinked) card.querySelector('h3').insertAdjacentHTML('afterend', '<p class="muted">✅ Привязан аккаунт Google</p>');
+    if (h.tiktok) card.querySelector('h3').insertAdjacentHTML('afterend', `<p class="muted">✅ Привязан TikTok ${esc(h.tiktok.username ? '@' + h.tiktok.username : h.tiktok.displayName || '')}</p>`);
+    else if (h.tiktokLogin) {
+      const a = document.createElement('a');
+      a.className = 'btn';
+      a.href = '/auth/tiktok?link=1';
+      a.textContent = 'Привязать TikTok — ник подставится сам';
+      card.querySelector('h3').after(a);
+    }
     card.addEventListener('submit', (e) => {
       e.preventDefault();
       call('/auth/change', Object.fromEntries(new FormData(card)), 'Пароль сохранён').then((r) => r && card.reset());

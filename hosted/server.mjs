@@ -13,6 +13,7 @@ import { PUBLIC, MIME, send, readJson } from '../src/server-app.mjs';
 import { verifySignature, applyWebhook } from './billing.mjs';
 import { createMailer, resetEmail, verifyEmail } from './mailer.mjs';
 import { startFlow, finishFlow, sealFlow, openFlow } from './google.mjs';
+import { startTikTokFlow, finishTikTokFlow } from './tiktok-auth.mjs';
 
 const HOSTED_PUBLIC = join(dirname(fileURLToPath(import.meta.url)), 'public');
 const COOKIE = 'tl_session';
@@ -64,6 +65,7 @@ export function startHostedServer({
   authLimit = 10, // auth attempts per IP per 15 minutes
   requireEmailVerification, // default: on whenever e-mail can actually be sent
   google = {}, // { clientId, clientSecret } — "Sign in with Google"; also needs publicUrl
+  tiktok = {}, // { clientKey, clientSecret, scopes } — "Continue with TikTok"; also needs publicUrl
   fetchImpl = globalThis.fetch,
   now = () => Date.now(),
   log = console.log,
@@ -79,6 +81,9 @@ export function startHostedServer({
   const resendLimiter = new Limiter(3, 60 * 60 * 1000, now); // per account
   const googleOn = Boolean(google.clientId && google.clientSecret && baseUrl);
   const googleRedirect = `${baseUrl}/auth/google/callback`;
+  const tiktokOn = Boolean(tiktok.clientKey && tiktok.clientSecret && baseUrl);
+  const tiktokRedirect = `${baseUrl}/auth/tiktok/callback`;
+  tenants.tiktokLogin = tiktokOn;
   const loginError = (res, message) => redirect(res, `/login?error=${encodeURIComponent(message)}`);
 
   function sendVerification(userId) {
@@ -164,7 +169,44 @@ export function startHostedServer({
       }
 
       // --- Sign in with Google -------------------------------------------------------
-      if (req.method === 'GET' && path === '/auth/providers') return send(res, 200, { google: googleOn, signup: allowSignup });
+      if (req.method === 'GET' && path === '/auth/providers') return send(res, 200, { google: googleOn, tiktok: tiktokOn, signup: allowSignup });
+
+      // --- Continue with TikTok (login, or ?link=1 from the dashboard to attach TikTok) ---
+      if (req.method === 'GET' && path === '/auth/tiktok') {
+        const link = url.searchParams.get('link') === '1' && Boolean(sessionUser(req));
+        if (!tiktokOn) return link ? redirect(res, '/app?error=' + encodeURIComponent('Вход через TikTok не настроен')) : loginError(res, 'Вход через TikTok на этом сервере не настроен');
+        const { flow, url: target } = startTikTokFlow({ clientKey: tiktok.clientKey, redirectUri: tiktokRedirect, scopes: tiktok.scopes, link });
+        res.setHeader('set-cookie', `tl_oauth_tt=${sealFlow(flow, serverSecret, now())}; Path=/auth/tiktok; HttpOnly; SameSite=Lax; Max-Age=600${isSecure(req) ? '; Secure' : ''}`);
+        return redirect(res, target);
+      }
+      if (req.method === 'GET' && path === '/auth/tiktok/callback') {
+        const flow = openFlow(parseCookies(req.headers.cookie).tl_oauth_tt, serverSecret, now());
+        res.setHeader('set-cookie', 'tl_oauth_tt=; Path=/auth/tiktok; HttpOnly; SameSite=Lax; Max-Age=0');
+        const current = sessionUser(req);
+        const fail = (msg) => (flow?.link && current ? redirect(res, '/app?error=' + encodeURIComponent(msg)) : loginError(res, msg));
+        if (!tiktokOn) return fail('Вход через TikTok на этом сервере не настроен');
+        if (url.searchParams.get('error')) return fail('Вход через TikTok отменён');
+        if (!flow || flow.state !== url.searchParams.get('state')) return fail('Сессия входа устарела — попробуйте ещё раз');
+        if (!signupLimiter.hit(ipOf(req))) return fail('Слишком много попыток. Подождите 15 минут.');
+        try {
+          const profile = await finishTikTokFlow({ code: url.searchParams.get('code'), clientKey: tiktok.clientKey, clientSecret: tiktok.clientSecret, redirectUri: tiktokRedirect, scopes: tiktok.scopes, fetchImpl });
+          if (flow.link && current) {
+            accounts.linkTikTok(current, profile);
+            tenants.applyTikTokProfile(current, profile);
+            log(`[auth] tiktok linked ${current}`);
+            return redirect(res, '/app?linked=tiktok');
+          }
+          if (!accounts.byTikTok.get(profile.openId) && !allowSignup) return fail('Регистрация закрыта');
+          const { userId, created } = accounts.loginWithTikTok(profile);
+          tenants.applyTikTokProfile(userId, profile);
+          log(`[auth] tiktok ${created ? 'signup' : 'login'} ${userId}`);
+          setSession(req, res, userId);
+          return redirect(res, '/app');
+        } catch (err) {
+          log(`[auth] tiktok callback: ${err.message}`);
+          return fail(err.message);
+        }
+      }
       if (req.method === 'GET' && path === '/auth/google') {
         if (!googleOn) return loginError(res, 'Вход через Google на этом сервере не настроен');
         const { flow, url: target } = startFlow({ clientId: google.clientId, redirectUri: googleRedirect });

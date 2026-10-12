@@ -107,3 +107,5 @@ table.plans td:first-child, table.plans th:first-child { text-align: left; }
 
 .account { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
 .account button { padding: 4px 10px; font-size: 13px; }
+
+.account .avatar { width: 24px; height: 24px; border-radius: 50%; }

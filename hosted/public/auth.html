@@ -27,6 +27,8 @@
   .hidden { display: none !important; }
   .google { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 12px; border-radius: 12px; background: #fff; color: #1f1f1f; font-weight: 600; text-decoration: none; margin-bottom: 14px; }
   .google:hover { filter: brightness(.95); }
+  .tiktok { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 12px; border-radius: 12px; background: #000; color: #fff; font-weight: 600; text-decoration: none; margin-bottom: 14px; border: 1px solid #333; }
+  .tiktok:hover { background: #111; }
   .or { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; margin-bottom: 14px; }
   .or::before, .or::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 </style>
@@ -36,6 +38,7 @@
   <div class="logo"><span>◆</span> TikLive <b>Studio</b></div>
   <p class="sub" id="sub">Интерактивные эфиры TikTok LIVE — прямо в браузере.</p>
   <div class="tabs"><a href="/login" id="tLogin">Вход</a><a href="/signup" id="tSignup">Регистрация</a></div>
+  <a class="tiktok hidden" id="tiktok" href="/auth/tiktok"><svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#25F4EE" d="M33.6 4c.6 4.6 3.2 7.4 7.4 7.7v5.2c-2.4.2-4.6-.6-7.1-2.1v9.7c0 12.3-13.4 16.2-18.8 7.4-3.5-5.6-1.4-15.5 9.7-15.9v5.5c-.8.1-1.7.3-2.5.6-2.5.8-3.9 2.4-3.5 5.2.8 5.4 10.6 7 9.8-3.6V4h5z"/><path fill="#FE2C55" d="M35.6 6c.6 4.6 3.2 7.4 7.4 7.7v5.2c-2.4.2-4.6-.6-7.1-2.1v9.7c0 12.3-13.4 16.2-18.8 7.4-3.5-5.6-1.4-15.5 9.7-15.9v5.5c-.8.1-1.7.3-2.5.6-2.5.8-3.9 2.4-3.5 5.2.8 5.4 10.6 7 9.8-3.6V6h5z" opacity=".85"/><path fill="#fff" d="M34.6 5c.6 4.6 3.2 7.4 7.4 7.7v5.2c-2.4.2-4.6-.6-7.1-2.1v9.7c0 12.3-13.4 16.2-18.8 7.4-3.5-5.6-1.4-15.5 9.7-15.9v5.5c-.8.1-1.7.3-2.5.6-2.5.8-3.9 2.4-3.5 5.2.8 5.4 10.6 7 9.8-3.6V5h5z"/></svg>Продолжить с TikTok</a>
   <a class="google hidden" id="google" href="/auth/google"><svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>Продолжить с Google</a>
   <div class="or hidden" id="or"><span>или по e-mail</span></div>
   <form id="form">
@@ -46,7 +49,7 @@
     <div class="ok" id="ok" role="status"></div>
     <p class="forgot" id="forgotLink"><a href="/forgot">Забыли пароль?</a></p>
   </form>
-  <p class="note" id="note">Без логина и пароля от TikTok — только ник стримера.<br>Первые 7 дней Pro бесплатно, без карты.</p>
+  <p class="note" id="note">Пароль от TikTok мы никогда не спрашиваем и не видим.<br>Первые 7 дней Pro бесплатно, без карты.</p>
 </main>
 <script>
   // One page, four modes: /login, /signup, /forgot (request a link), /reset?token=… (set a new password).
@@ -77,7 +80,9 @@
   // Google button only where it makes sense (login/sign-up) and only if the server has it configured.
   if (mode === 'login' || mode === 'signup')
     fetch('/auth/providers').then((r) => r.json()).then((p) => {
-      if (p.google) { $('google').classList.remove('hidden'); $('or').classList.remove('hidden'); }
+      if (p.tiktok) $('tiktok').classList.remove('hidden');
+      if (p.google) $('google').classList.remove('hidden');
+      if (p.google || p.tiktok) $('or').classList.remove('hidden');
     }).catch(() => {});
   if (q.has('verified')) $('ok').textContent = '✅ E-mail подтверждён. Войдите в аккаунт.';
   if (q.get('verify_error')) $('err').textContent = q.get('verify_error');

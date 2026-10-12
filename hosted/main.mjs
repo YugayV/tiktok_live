@@ -28,6 +28,7 @@ const app = startHostedServer({
   publicUrl: env.PUBLIC_URL || '',
   webhookSecret: env.LS_WEBHOOK_SECRET || '',
   google: { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET },
+  tiktok: { clientKey: env.TIKTOK_CLIENT_KEY, clientSecret: env.TIKTOK_CLIENT_SECRET, scopes: env.TIKTOK_SCOPES || undefined },
   mailer: createMailer({ apiKey: env.RESEND_API_KEY, from: env.MAIL_FROM, devLog: env.MAIL_DEV_LOG === '1' }),
 });
 

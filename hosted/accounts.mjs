@@ -33,9 +33,10 @@ export class AccountStore {
     this.data = { users: {}, sessions: {}, resets: {}, verifies: {} };
     if (file && existsSync(file)) this.data = { ...this.data, ...JSON.parse(readFileSync(file, 'utf8')) };
     this.data.verifies ||= {};
-    this.byEmail = new Map(Object.entries(this.data.users).map(([id, u]) => [u.email, id]));
+    this.byEmail = new Map(Object.entries(this.data.users).filter(([, u]) => u.email).map(([id, u]) => [u.email, id]));
     this.byOverlay = new Map(Object.entries(this.data.users).map(([id, u]) => [u.overlayToken, id]));
     this.byGoogle = new Map(Object.entries(this.data.users).filter(([, u]) => u.googleSub).map(([id, u]) => [u.googleSub, id]));
+    this.byTikTok = new Map(Object.entries(this.data.users).filter(([, u]) => u.tiktok?.openId).map(([id, u]) => [u.tiktok.openId, id]));
   }
 
   save() {
@@ -131,6 +132,39 @@ export class AccountStore {
     return { userId: id, created: true };
   }
 
+  // --- Continue with TikTok ---------------------------------------------------
+  // TikTok shares no e-mail, so TikTok-only accounts have email=null and are keyed by open_id.
+  loginWithTikTok(profile) {
+    let id = this.byTikTok.get(profile.openId);
+    if (id && this.data.users[id]) {
+      this.data.users[id].tiktok = { ...this.data.users[id].tiktok, ...profile };
+      this.save();
+      return { userId: id, created: false };
+    }
+    id = `u_${token(9)}`;
+    this.data.users[id] = { email: null, salt: null, hash: null, tiktok: profile, createdAt: this.now(), overlayToken: token(18), autoConnect: false, emailVerified: true };
+    this.byOverlay.set(this.data.users[id].overlayToken, id);
+    this.byTikTok.set(profile.openId, id);
+    this.save();
+    return { userId: id, created: true };
+  }
+
+  // Link TikTok to the account the user is logged into.
+  linkTikTok(id, profile) {
+    const owner = this.byTikTok.get(profile.openId);
+    if (owner && owner !== id) throw new Error('Этот аккаунт TikTok уже привязан к другому аккаунту TikLive');
+    this.data.users[id].tiktok = profile;
+    this.byTikTok.set(profile.openId, id);
+    this.save();
+  }
+
+  // Name to show in the dashboard: e-mail, else the TikTok handle.
+  label(id) {
+    const u = this.data.users[id];
+    if (!u) return '';
+    return u.email || (u.tiktok?.username ? `@${u.tiktok.username}` : u.tiktok?.displayName || 'TikTok');
+  }
+
   hasPassword(id) {
     return Boolean(this.data.users[id]?.hash);
   }
@@ -187,6 +221,7 @@ export class AccountStore {
   changePassword(id, current, password) {
     const u = this.data.users[id];
     if (!u || (u.hash && !verifyPassword(current, u.salt, u.hash))) throw new Error('Текущий пароль неверный');
+    if (!u.email) throw new Error('У аккаунта TikTok нет e-mail — пароль не нужен, входите через TikTok');
     if (String(password || '').length < 8) throw new Error('Пароль должен быть не короче 8 символов');
     Object.assign(u, hashPassword(password));
     this.save();

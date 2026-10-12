@@ -110,7 +110,11 @@ export class TenantManager {
     const baseState = studio.state.bind(studio);
     studio.state = () => ({
       ...baseState(),
-      hosted: { hasPassword: this.accounts.hasPassword(userId), googleLinked: Boolean(this.accounts.user(userId)?.googleSub), emailVerified: this.accounts.isVerified(userId), email: this.accounts.user(userId)?.email, overlayPath: `/o/${this.accounts.user(userId)?.overlayToken}/`, desktopOnly: ['keyboard', 'obs'], aiReady: Boolean(this.anthropic) },
+      hosted: {
+        label: this.accounts.label(userId),
+        tiktok: this.accounts.user(userId)?.tiktok ? { username: this.accounts.user(userId).tiktok.username, displayName: this.accounts.user(userId).tiktok.displayName, avatar: this.accounts.user(userId).tiktok.avatar } : null,
+        tiktokLogin: this.tiktokLogin,
+        hasPassword: this.accounts.hasPassword(userId), googleLinked: Boolean(this.accounts.user(userId)?.googleSub), emailVerified: this.accounts.isVerified(userId), email: this.accounts.user(userId)?.email, overlayPath: `/o/${this.accounts.user(userId)?.overlayToken}/`, desktopOnly: ['keyboard', 'obs'], aiReady: Boolean(this.anthropic) },
     });
 
     const routes = buildRoutes(studio, broadcast);
@@ -149,6 +153,17 @@ export class TenantManager {
     studio.license.startAutoValidate();
     this.log(`[tenant] started ${userId} (${user?.email})`);
     return { userId, studio, clients, routes, lastActive: this.now() };
+  }
+
+  // After TikTok sign-in/linking: fill the LIVE @username if the streamer hasn't set one yet.
+  applyTikTokProfile(userId, profile) {
+    const t = this.get(userId);
+    const s = t.studio.cfg.settings;
+    if (profile.username && !s.username) {
+      s.username = profile.username;
+      t.studio.config.save();
+      t.studio.broadcast('config', t.studio.cfg);
+    }
   }
 
   // Tell an open dashboard that the address got confirmed (e.g. link opened on the phone).
