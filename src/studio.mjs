@@ -18,6 +18,8 @@ import { AiResponder, AiError } from './ai.mjs';
 import { SongQueue } from './songs.mjs';
 import { KeyController, createOsDriver } from './keyboard.mjs';
 import { License, PRO_FEATURES } from './license.mjs';
+import { ChatReader } from './chat-filter.mjs';
+import { NeuralTTS } from './neural-tts.mjs';
 
 // Store/product ids and checkout link of the subscription live in package.json → "tiklive".
 function readPackage() {
@@ -51,7 +53,7 @@ export class ProRequiredError extends Error {
 const DEDUPE_WINDOW_MS = 1500;
 
 export class Studio {
-  constructor({ dataDir, broadcast = () => {}, fetchImpl = globalThis.fetch, keyDriver, createAiClient, license } = {}) {
+  constructor({ dataDir, broadcast = () => {}, fetchImpl = globalThis.fetch, keyDriver, createAiClient, license, neuralTts } = {}) {
     this.broadcast = broadcast;
     this.fetch = fetchImpl;
     this.config = new JsonStore(dataDir && join(dataDir, 'config.json'), DEFAULT_CONFIG);
@@ -80,6 +82,9 @@ export class Studio {
     this.poll = null;
     this.battle = null;
     this.recentKeys = new Map();
+    this.chatReader = new ChatReader();
+    this.neural = neuralTts || new NeuralTTS();
+    this.neuralFailedAt = 0;
     this.feed = [];
     this.log = [];
     this.statsDirty = true;
@@ -110,6 +115,13 @@ export class Studio {
       }
       s.tts.output ||= 'app';
       done.push('tts-in-app');
+      this.config.save();
+    }
+    if (!done.includes('chat-tts')) {
+      // "Read all chat" became a filtered chat reader; keep the user's choice.
+      if (s.tts.readAllChat) s.tts.chat.enabled = true;
+      delete s.tts.readAllChat;
+      done.push('chat-tts');
       this.config.save();
     }
   }
@@ -192,7 +204,8 @@ export class Studio {
     if (ev.type === 'chat') {
       if (this.handleSongCommand(ev)) return;
       if (this.poll?.vote(ev.user, ev.text)) this.broadcast('poll', this.poll.snapshot());
-      if (this.cfg.settings.tts.readAllChat && !ev.text.startsWith('!')) this.speak(`${ev.user.nickname}: ${ev.text}`);
+      const read = this.chatReader.check(ev, this.cfg.settings.tts.chat);
+      if (read.ok) this.speak(read.text);
     }
     if (this.battle?.handle(ev)) this.broadcast('battle', this.battle.snapshot());
 
@@ -221,10 +234,23 @@ export class Studio {
     return stripLinks ? out.replace(/https?:\/\/\S+/gi, '[ссылка]') : out;
   }
 
+  // Neural voice: synthesized here, sent as a data: URL so the app window and OBS overlays
+  // (which have no session) can play it. If the service fails, the system voice speaks instead
+  // and neural is skipped for a minute so a dead service doesn't delay every phrase.
   speak(text) {
     const tts = this.cfg.settings.tts;
     const clean = this.censor(text).slice(0, tts.maxLength || 200);
-    if (clean.trim()) this.broadcast('tts', { text: clean, lang: tts.lang, voice: tts.voice, rate: tts.rate, volume: tts.volume, output: tts.output || 'app' });
+    if (!clean.trim()) return;
+    const msg = { text: clean, lang: tts.lang, voice: tts.voice, rate: tts.rate, volume: tts.volume, output: tts.output || 'app' };
+    if (tts.engine !== 'neural' || Date.now() - this.neuralFailedAt < 60000) return this.broadcast('tts', msg);
+    return this.neural.synth(clean, { voice: tts.neuralVoice, rate: tts.rate, pitch: tts.pitch }).then(
+      (mp3) => this.broadcast('tts', { ...msg, audio: `data:audio/mpeg;base64,${mp3.toString('base64')}` }),
+      (err) => {
+        this.neuralFailedAt = Date.now();
+        this.logLine(`⚠ Нейро-голос недоступен (${err.message}) — говорит системный голос`);
+        this.broadcast('tts', msg);
+      },
+    );
   }
 
   // --- updates ---------------------------------------------------------------

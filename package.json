@@ -1,6 +1,6 @@
 {
   "name": "tiklive",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "private": true,
   "description": "TikLive Studio — interactive TikTok LIVE toolkit: alerts, rules engine, goals, games, TTS and OBS automation",
   "type": "module",
@@ -26,6 +26,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
     "electron-updater": "^6.8.9",
+    "msedge-tts": "^2.0.9",
     "tiktok-live-connector": "^2.5.0",
     "ws": "^8.18.0"
   },

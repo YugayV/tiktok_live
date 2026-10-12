@@ -22,16 +22,44 @@
     a.volume = Math.max(0, Math.min(1, volume));
     a.play().catch(() => {});
   }
-  function speak({ text, lang, voice: voiceName, rate, volume, output }) {
-    if (!audioOn(output) || !('speechSynthesis' in window)) return;
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = lang || 'ru-RU';
-    u.rate = rate || 1;
-    u.volume = volume ?? 1;
-    const voices = speechSynthesis.getVoices();
-    const voice = voices.find((v) => v.name === voiceName) || voices.find((v) => v.lang === u.lang);
-    if (voice) u.voice = voice;
-    speechSynthesis.speak(u);
+  // Phrases play in order: neural mp3 from the server, else the browser's voice.
+  const ttsQueue = [];
+  let ttsBusy = false;
+  function speak(p) {
+    if (!audioOn(p.output) || !p.text) return;
+    if (ttsQueue.length >= 4) ttsQueue.shift();
+    ttsQueue.push(p);
+    nextTts();
+  }
+  function nextTts() {
+    if (ttsBusy || !ttsQueue.length) return;
+    const p = ttsQueue.shift();
+    ttsBusy = true;
+    let finished = false;
+    const done = () => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(guard);
+      ttsBusy = false;
+      nextTts();
+    };
+    const guard = setTimeout(done, 30000);
+    if (p.audio) {
+      const a = new Audio(p.audio);
+      a.volume = Math.max(0, Math.min(1, p.volume ?? 1));
+      a.onended = a.onerror = done;
+      a.play().catch(done);
+    } else if ('speechSynthesis' in window) {
+      const u = new SpeechSynthesisUtterance(p.text);
+      u.lang = p.lang || 'ru-RU';
+      u.rate = p.rate || 1;
+      u.volume = p.volume ?? 1;
+      const voices = speechSynthesis.getVoices();
+      const voice = voices.find((v) => v.name === p.voice) || voices.find((v) => v.lang === u.lang);
+      if (voice) u.voice = voice;
+      u.onend = u.onerror = done;
+      speechSynthesis.speak(u);
+    } else done();
   }
 
   // ---------------- confetti ----------------

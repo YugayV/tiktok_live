@@ -6,6 +6,7 @@ import { DEFAULT_POINT_RATES } from './stats.mjs';
 import { DEFAULT_AI } from './ai.mjs';
 import { DEFAULT_SONGS } from './songs.mjs';
 import { DEFAULT_KEYBOARD } from './keyboard.mjs';
+import { DEFAULT_CHAT_TTS } from './chat-filter.mjs';
 
 export const DEFAULT_CONFIG = {
   settings: {
@@ -15,7 +16,9 @@ export const DEFAULT_CONFIG = {
     obs: { enabled: false, url: 'ws://127.0.0.1:4455', password: '' },
     // output: 'app' — speak and play sounds in the TikLive window (works everywhere);
     //         'obs' — only in the OBS alerts overlay (OBS's browser often has no TTS voices).
-    tts: { lang: 'ru-RU', voice: '', rate: 1, volume: 1, maxLength: 200, readAllChat: false, output: 'app' },
+    // engine: 'neural' — Microsoft neural voices (online, much better), falls back to 'system'
+    //         'system' — voices installed in Windows / the browser.
+    tts: { engine: 'neural', neuralVoice: 'ru-RU-SvetlanaNeural', pitch: 0, lang: 'ru-RU', voice: '', rate: 1, volume: 1, maxLength: 200, output: 'app', chat: DEFAULT_CHAT_TTS },
     bannedWords: '',
     pointRates: DEFAULT_POINT_RATES,
     alertMergeWindow: true,

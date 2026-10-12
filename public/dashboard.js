@@ -24,8 +24,8 @@
   }
   // Overlay links: personal /o/<token>/ in the web version, local /overlay/ in the desktop app.
   const overlayBase = () => location.origin + (S?.hosted?.overlayPath || '/overlay/');
-  const call = (path, body, okMsg) =>
-    api(path, body)
+  const call = (path, body, okMsg, method) =>
+    api(path, body, method)
       .then((r) => (okMsg && toast(okMsg), r))
       .catch((e) => toast(e.message, true));
   const getPath = (o, p) => p.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
@@ -35,7 +35,7 @@
     for (const k of ks.slice(0, -1)) cur = cur[k] ??= {};
     cur[ks.at(-1)] = v;
   }
-  const saveConfig = (part, msg = 'Сохранено') => call('/api/config', part, msg).then(() => (dirty = false));
+  const saveConfig = (part, msg = 'Сохранено') => call('/api/config', part, msg, 'PUT').then((r) => (r && (dirty = false), r));
   let dirty = false;
 
   // Builds a labeled input bound to obj[path].
@@ -476,6 +476,8 @@
     $('#obsState').textContent = S.obs ? '● подключен' : '';
     loadVoices();
     renderAudioHint();
+    renderChatToggle();
+    renderEngine();
   }
   $('#settingsForm').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -666,15 +668,53 @@
     loadVoices();
     speechSynthesis.addEventListener?.('voiceschanged', loadVoices);
   }
+  // Phrases play one after another (neural mp3 or a system voice). If chat outpaces the voice,
+  // the oldest waiting phrases are dropped so TTS never lags minutes behind the stream.
+  const ttsQueue = [];
+  let ttsCurrent = null;
   function speakInApp(p) {
-    if (!inApp(p.output) || !('speechSynthesis' in window) || !p.text) return;
-    const u = new SpeechSynthesisUtterance(p.text);
-    u.lang = p.lang || 'ru-RU';
-    u.rate = p.rate || 1;
-    u.volume = p.volume ?? 1;
-    const v = voices.find((x) => x.name === p.voice) || voices.find((x) => x.lang === u.lang) || voices.find((x) => x.lang.startsWith(u.lang.slice(0, 2)));
-    if (v) u.voice = v;
-    speechSynthesis.speak(u);
+    if (!inApp(p.output) || !p.text) return;
+    if (ttsQueue.length >= 4) ttsQueue.shift();
+    ttsQueue.push(p);
+    nextTts();
+  }
+  function nextTts() {
+    if (ttsCurrent || !ttsQueue.length) return;
+    const p = ttsQueue.shift();
+    const done = () => {
+      if (ttsCurrent !== item) return;
+      clearTimeout(item.guard);
+      ttsCurrent = null;
+      nextTts();
+    };
+    const item = { guard: setTimeout(done, 30000), stop: () => {} };
+    ttsCurrent = item;
+    if (p.audio) {
+      const a = new Audio(p.audio);
+      a.volume = Math.max(0, Math.min(1, p.volume ?? 1));
+      a.onended = a.onerror = done;
+      item.stop = () => a.pause();
+      a.play().catch(done);
+    } else if ('speechSynthesis' in window) {
+      const u = new SpeechSynthesisUtterance(p.text);
+      u.lang = p.lang || 'ru-RU';
+      u.rate = p.rate || 1;
+      u.volume = p.volume ?? 1;
+      const v = voices.find((x) => x.name === p.voice) || voices.find((x) => x.lang === u.lang) || voices.find((x) => x.lang.startsWith(u.lang.slice(0, 2)));
+      if (v) u.voice = v;
+      u.onend = u.onerror = done;
+      item.stop = () => speechSynthesis.cancel();
+      speechSynthesis.speak(u);
+    } else done();
+  }
+  function stopTts() {
+    ttsQueue.length = 0;
+    const cur = ttsCurrent;
+    ttsCurrent = null;
+    if (cur) {
+      clearTimeout(cur.guard);
+      cur.stop();
+    }
   }
   function soundInApp(url, volume = 1, output) {
     if (!inApp(output) || !url) return;
@@ -684,10 +724,29 @@
   }
   // Browsers unlock audio after the first click; a no-op utterance warms the speech engine up.
   document.addEventListener('click', () => 'speechSynthesis' in window && speechSynthesis.resume(), { once: true });
+  // Save first so the server speaks with the voice that is selected right now.
   $('#ttsCheck').onclick = () => {
-    const f = $('#settingsForm');
-    speakInApp({ text: 'Привет! Так будет звучать озвучка на эфире.', lang: f.elements['tts.lang'].value, voice: f.elements['tts.voice'].value, rate: Number(f.elements['tts.rate'].value) || 1, volume: 1, output: 'app' });
+    $('#settingsForm').requestSubmit();
+    setTimeout(() => call('/api/tts', { text: 'Привет! Так будет звучать озвучка на эфире.' }), 400);
   };
+  $('#ttsStop').onclick = () => stopTts();
+  // Quick toggle on the home tab: read chat aloud (with the junk filter from settings).
+  function renderChatToggle() {
+    $('#chatTtsToggle').checked = Boolean(S?.config?.settings?.tts?.chat?.enabled);
+  }
+  $('#chatTtsToggle').onchange = (e) => {
+    const st = S.config.settings;
+    st.tts.chat.enabled = e.target.checked;
+    saveConfig({ settings: st }, e.target.checked ? 'Озвучка чата включена' : 'Озвучка чата выключена');
+    const box = $('#settingsForm').elements['tts.chat.enabled'];
+    if (box) box.checked = e.target.checked;
+  };
+  function renderEngine() {
+    const neural = $('#settingsForm').elements['tts.engine'].value === 'neural';
+    for (const el of $$('.only-neural')) el.classList.toggle('hidden', !neural);
+    for (const el of $$('.only-system')) el.classList.toggle('hidden', neural);
+  }
+  $('#settingsForm').elements['tts.engine'].addEventListener('change', renderEngine);
   function renderAudioHint() {
     const o = S?.config?.settings?.tts?.output || 'app';
     $('#audioHint').textContent = o === 'app' ? '🔊 Звук и озвучка играют в этой программе' : '🔊 Звук и озвучка — в оверлее OBS';

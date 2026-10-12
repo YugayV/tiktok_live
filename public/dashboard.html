@@ -49,7 +49,8 @@
           <div class="btns"><button id="pauseBtn">⏸ Пауза</button><button id="skipBtn">⏭ Пропустить</button><button id="clearBtn">🗑</button></div>
         </div>
         <div id="queueInfo" class="muted"></div>
-        <form id="ttsForm" class="inline"><input id="ttsText" placeholder="Озвучить текст (TTS)…"><button>🔊</button></form>
+        <form id="ttsForm" class="inline"><input id="ttsText" placeholder="Озвучить текст (TTS)…"><button>🔊</button><button type="button" id="ttsStop" title="Остановить озвучку и очистить очередь">⏹</button></form>
+        <label class="check chat-tts"><input type="checkbox" id="chatTtsToggle"> 🗣 Озвучивать чат <span class="muted">(без мусора: эмодзи, «+», ссылки, повторы, флуд — фильтр в «Настройках»)</span></label>
         <div class="card-h" style="margin-top:12px"><h3>Предпросмотр алертов</h3><span class="muted" id="audioHint"></span></div>
         <iframe id="alertPreview" class="alert-preview" title="Предпросмотр алертов"></iframe>
         <p class="muted small-note">Так алерты выглядят в OBS / TikTok LIVE Studio. Чтобы зрители их видели, добавьте оверлей «Алерты» на вкладке «Оверлеи».</p>
@@ -281,12 +282,46 @@
       <div class="card">
         <h3>Озвучка (TTS)</h3>
         <label>Где играть озвучку и звуки<select name="tts.output"><option value="app">В программе TikLive (рекомендуется)</option><option value="obs">Только в оверлее OBS</option></select></label>
-        <label>Голос<select name="tts.voice" id="ttsVoice"><option value="">Автоматически по языку</option></select></label>
+        <label>Движок голоса<select name="tts.engine"><option value="neural">Нейро-голоса Microsoft — живое звучание (нужен интернет)</option><option value="system">Голоса Windows / браузера</option></select></label>
+        <label class="only-neural">Голос<select name="tts.neuralVoice">
+          <option value="ru-RU-SvetlanaNeural">Светлана — русский, женский</option>
+          <option value="ru-RU-DmitryNeural">Дмитрий — русский, мужской</option>
+          <option value="uk-UA-PolinaNeural">Поліна — украинский, женский</option>
+          <option value="uk-UA-OstapNeural">Остап — украинский, мужской</option>
+          <option value="kk-KZ-AigulNeural">Айгуль — казахский, женский</option>
+          <option value="kk-KZ-DauletNeural">Даулет — казахский, мужской</option>
+          <option value="uz-UZ-MadinaNeural">Madina — узбекский, женский</option>
+          <option value="en-US-AriaNeural">Aria — English (US), female</option>
+          <option value="en-US-GuyNeural">Guy — English (US), male</option>
+          <option value="en-GB-SoniaNeural">Sonia — English (UK), female</option>
+          <option value="de-DE-KatjaNeural">Katja — Deutsch, weiblich</option>
+          <option value="es-ES-ElviraNeural">Elvira — español, femenino</option>
+          <option value="tr-TR-EmelNeural">Emel — Türkçe, kadın</option>
+        </select></label>
+        <label class="only-neural">Высота голоса, % (−50…+50)<input name="tts.pitch" type="number" step="5" min="-50" max="50"></label>
+        <label class="only-system">Голос<select name="tts.voice" id="ttsVoice"><option value="">Автоматически по языку</option></select></label>
+        <label class="only-system">Язык<select name="tts.lang"><option>ru-RU</option><option>en-US</option><option>uk-UA</option><option>kk-KZ</option><option>de-DE</option><option>es-ES</option><option>tr-TR</option></select></label>
+        <label>Скорость (0.5–2)<input name="tts.rate" type="number" step="0.1" min="0.5" max="2"></label>
+        <label>Громкость (0–1)<input name="tts.volume" type="number" step="0.1" min="0" max="1"></label>
+        <label>Макс. длина фразы<input name="tts.maxLength" type="number"></label>
         <button type="button" id="ttsCheck">🔊 Проверить голос</button>
-        <label>Язык<select name="tts.lang"><option>ru-RU</option><option>en-US</option><option>uk-UA</option><option>kk-KZ</option><option>de-DE</option><option>es-ES</option><option>tr-TR</option></select></label>
-        <label>Скорость<input name="tts.rate" type="number" step="0.1" min="0.5" max="2"></label>
-        <label>Макс. длина<input name="tts.maxLength" type="number"></label>
-        <label class="check"><input type="checkbox" name="tts.readAllChat"> Озвучивать весь чат</label>
+        <h3>Озвучка чата</h3>
+        <label class="check"><input type="checkbox" name="tts.chat.enabled"> Озвучивать сообщения чата</label>
+        <label class="check"><input type="checkbox" name="tts.chat.readNames"> Называть ник зрителя</label>
+        <label>Шаблон фразы<input name="tts.chat.template" placeholder="{nickname}: {text}"></label>
+        <p class="muted small-note">Пропускать лишние сообщения:</p>
+        <label class="check"><input type="checkbox" name="tts.chat.skipCommands"> команды (!song, !tts…)</label>
+        <label class="check"><input type="checkbox" name="tts.chat.skipEmojiOnly"> только эмодзи и символы</label>
+        <label class="check"><input type="checkbox" name="tts.chat.skipLinks"> со ссылками</label>
+        <label class="check"><input type="checkbox" name="tts.chat.skipRepeats"> повторы (одинаковый текст за минуту)</label>
+        <label class="check"><input type="checkbox" name="tts.chat.onlyFollowers"> озвучивать только подписчиков</label>
+        <div class="grid3 tight">
+          <label>Мин. букв<input name="tts.chat.minLength" type="number" min="0"></label>
+          <label>Пауза на зрителя, сек<input name="tts.chat.perUserCooldownSec" type="number" min="0"></label>
+          <label>Макс. в минуту<input name="tts.chat.maxPerMinute" type="number" min="0"></label>
+        </div>
+        <label>Не озвучивать ники (через запятую — боты, спамеры)<textarea name="tts.chat.blockUsers" rows="2"></textarea></label>
+        <label>Не озвучивать сообщения со словами (через запятую)<textarea name="tts.chat.blockWords" rows="2"></textarea></label>
         <label>Запрещённые слова (через запятую, заменяются на ***)<textarea name="bannedWords" rows="2"></textarea></label>
         <label class="check"><input type="checkbox" name="alertMergeWindow"> Склеивать одинаковые подарки в очереди (антиспам)</label>
         <h3>Очки зрителей</h3>

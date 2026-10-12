@@ -128,6 +128,7 @@ test('obs auth matches obs-websocket v5 reference', () => {
 test('studio end-to-end: event -> rule -> alert/tts broadcast + points', async () => {
   const sent = [];
   const studio = new Studio({ broadcast: (type, payload) => sent.push({ type, payload }) });
+  studio.cfg.settings.tts.engine = 'system';
   studio.handleEvent(gift('Galaxy', 1000));
   const alert = sent.find((m) => m.type === 'alert');
   assert.match(alert.payload.text, /МЕГА ДОНАТ! Alice — 1000💎/);
