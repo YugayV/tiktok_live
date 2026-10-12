@@ -110,7 +110,7 @@ export class TenantManager {
     const baseState = studio.state.bind(studio);
     studio.state = () => ({
       ...baseState(),
-      hosted: { emailVerified: this.accounts.isVerified(userId), email: this.accounts.user(userId)?.email, overlayPath: `/o/${this.accounts.user(userId)?.overlayToken}/`, desktopOnly: ['keyboard', 'obs'], aiReady: Boolean(this.anthropic) },
+      hosted: { hasPassword: this.accounts.hasPassword(userId), googleLinked: Boolean(this.accounts.user(userId)?.googleSub), emailVerified: this.accounts.isVerified(userId), email: this.accounts.user(userId)?.email, overlayPath: `/o/${this.accounts.user(userId)?.overlayToken}/`, desktopOnly: ['keyboard', 'obs'], aiReady: Boolean(this.anthropic) },
     });
 
     const routes = buildRoutes(studio, broadcast);

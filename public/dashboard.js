@@ -712,10 +712,14 @@
     // Change password (web accounts only).
     const card = document.createElement('form');
     card.className = 'card';
-    card.innerHTML = '<h3>Аккаунт</h3><label>Текущий пароль<input name="current" type="password" autocomplete="current-password" required></label><label>Новый пароль<input name="password" type="password" minlength="8" autocomplete="new-password" required></label><button class="save">Сменить пароль</button>';
+    // Accounts created through Google can set a password (to also log in by e-mail) without a current one.
+    card.innerHTML = h.hasPassword
+      ? '<h3>Аккаунт</h3><label>Текущий пароль<input name="current" type="password" autocomplete="current-password" required></label><label>Новый пароль<input name="password" type="password" minlength="8" autocomplete="new-password" required></label><button class="save">Сменить пароль</button>'
+      : '<h3>Аккаунт</h3><p class="muted">Вы входите через Google. Можно задать пароль, чтобы входить и по e-mail.</p><label>Пароль<input name="password" type="password" minlength="8" autocomplete="new-password" required></label><button class="save">Задать пароль</button>';
+    if (h.googleLinked) card.querySelector('h3').insertAdjacentHTML('afterend', '<p class="muted">✅ Привязан аккаунт Google</p>');
     card.addEventListener('submit', (e) => {
       e.preventDefault();
-      call('/auth/change', Object.fromEntries(new FormData(card)), 'Пароль изменён').then((r) => r && card.reset());
+      call('/auth/change', Object.fromEntries(new FormData(card)), 'Пароль сохранён').then((r) => r && card.reset());
     });
     $('#settingsForm')?.after(card);
   }

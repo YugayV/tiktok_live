@@ -12,6 +12,7 @@ import { TenantManager } from './tenants.mjs';
 import { PUBLIC, MIME, send, readJson } from '../src/server-app.mjs';
 import { verifySignature, applyWebhook } from './billing.mjs';
 import { createMailer, resetEmail, verifyEmail } from './mailer.mjs';
+import { startFlow, finishFlow, sealFlow, openFlow } from './google.mjs';
 
 const HOSTED_PUBLIC = join(dirname(fileURLToPath(import.meta.url)), 'public');
 const COOKIE = 'tl_session';
@@ -62,6 +63,7 @@ export function startHostedServer({
   webhookSecret = '', // Lemon Squeezy signing secret
   authLimit = 10, // auth attempts per IP per 15 minutes
   requireEmailVerification, // default: on whenever e-mail can actually be sent
+  google = {}, // { clientId, clientSecret } — "Sign in with Google"; also needs publicUrl
   fetchImpl = globalThis.fetch,
   now = () => Date.now(),
   log = console.log,
@@ -75,6 +77,9 @@ export function startHostedServer({
   const verifyOn = requireEmailVerification ?? Boolean(baseUrl && mailer.enabled);
   if (!verifyOn) log('[web] подтверждение e-mail выключено (нужны PUBLIC_URL и почта) — новые аккаунты активны сразу');
   const resendLimiter = new Limiter(3, 60 * 60 * 1000, now); // per account
+  const googleOn = Boolean(google.clientId && google.clientSecret && baseUrl);
+  const googleRedirect = `${baseUrl}/auth/google/callback`;
+  const loginError = (res, message) => redirect(res, `/login?error=${encodeURIComponent(message)}`);
 
   function sendVerification(userId) {
     const u = accounts.user(userId);
@@ -88,7 +93,9 @@ export function startHostedServer({
 
   function setSession(req, res, userId) {
     const tok = accounts.createSession(userId);
-    res.setHeader('set-cookie', `${COOKIE}=${tok}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_MAX_AGE}${isSecure(req) ? '; Secure' : ''}`);
+    const prev = res.getHeader('set-cookie');
+    const cookie = `${COOKIE}=${tok}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_MAX_AGE}${isSecure(req) ? '; Secure' : ''}`;
+    res.setHeader('set-cookie', prev ? [].concat(prev, cookie) : cookie);
   }
 
   async function file(res, path, extraHeaders = {}) {
@@ -154,6 +161,36 @@ export function startHostedServer({
         log(`[billing] ${payload?.meta?.event_name}: ${r.handled ? `user ${r.userId} → ${accounts.user(r.userId)?.subscription?.status}` : r.reason}`);
         if (r.handled) tenants.notifyLicense(r.userId);
         return send(res, 200, { ok: true });
+      }
+
+      // --- Sign in with Google -------------------------------------------------------
+      if (req.method === 'GET' && path === '/auth/providers') return send(res, 200, { google: googleOn, signup: allowSignup });
+      if (req.method === 'GET' && path === '/auth/google') {
+        if (!googleOn) return loginError(res, 'Вход через Google на этом сервере не настроен');
+        const { flow, url: target } = startFlow({ clientId: google.clientId, redirectUri: googleRedirect });
+        res.setHeader('set-cookie', `tl_oauth=${sealFlow(flow, serverSecret, now())}; Path=/auth/google; HttpOnly; SameSite=Lax; Max-Age=600${isSecure(req) ? '; Secure' : ''}`);
+        return redirect(res, target);
+      }
+      if (req.method === 'GET' && path === '/auth/google/callback') {
+        const flow = openFlow(parseCookies(req.headers.cookie).tl_oauth, serverSecret, now());
+        res.setHeader('set-cookie', 'tl_oauth=; Path=/auth/google; HttpOnly; SameSite=Lax; Max-Age=0');
+        if (!googleOn) return loginError(res, 'Вход через Google на этом сервере не настроен');
+        if (url.searchParams.get('error')) return loginError(res, 'Вход через Google отменён');
+        if (!flow || flow.state !== url.searchParams.get('state')) return loginError(res, 'Сессия входа устарела — попробуйте ещё раз');
+        if (!signupLimiter.hit(ipOf(req))) return loginError(res, 'Слишком много попыток. Подождите 15 минут.');
+        try {
+          const g = await finishFlow({ code: url.searchParams.get('code'), flow, clientId: google.clientId, clientSecret: google.clientSecret, redirectUri: googleRedirect, fetchImpl, now: now() });
+          const known = accounts.byGoogle.get(g.sub) || accounts.idByEmail(g.email);
+          if (!known && !allowSignup) return loginError(res, 'Регистрация закрыта');
+          const { userId, created, linked } = accounts.loginWithGoogle(g);
+          if (linked) tenants.notifyVerified(userId);
+          log(`[auth] google ${created ? 'signup' : linked ? 'linked' : 'login'} ${userId}`);
+          setSession(req, res, userId);
+          return redirect(res, '/app');
+        } catch (err) {
+          log(`[auth] google callback: ${err.message}`);
+          return loginError(res, err.message);
+        }
       }
 
       // --- password reset -------------------------------------------------------

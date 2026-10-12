@@ -35,6 +35,7 @@ export class AccountStore {
     this.data.verifies ||= {};
     this.byEmail = new Map(Object.entries(this.data.users).map(([id, u]) => [u.email, id]));
     this.byOverlay = new Map(Object.entries(this.data.users).map(([id, u]) => [u.overlayToken, id]));
+    this.byGoogle = new Map(Object.entries(this.data.users).filter(([, u]) => u.googleSub).map(([id, u]) => [u.googleSub, id]));
   }
 
   save() {
@@ -64,7 +65,8 @@ export class AccountStore {
     const id = this.byEmail.get(normalizeEmail(rawEmail));
     const u = id && this.data.users[id];
     // Always run the hash so response time doesn't reveal whether the e-mail exists.
-    const ok = u ? verifyPassword(password, u.salt, u.hash) : (hashPassword(password), false);
+    // Google-only accounts have no password: same generic error (no account enumeration).
+    const ok = u?.hash ? verifyPassword(password, u.salt, u.hash) : (hashPassword(password), false);
     if (!ok) throw new Error('Неверный e-mail или пароль');
     return id;
   }
@@ -104,6 +106,33 @@ export class AccountStore {
   setSubscription(id, subscription) {
     this.data.users[id].subscription = subscription;
     this.save();
+  }
+
+  // --- Sign in with Google -----------------------------------------------------
+  // Google has verified the address, so an existing account with the same e-mail is linked
+  // (and counts as confirmed); otherwise a password-less account is created.
+  loginWithGoogle({ sub, email }) {
+    let id = this.byGoogle.get(sub);
+    if (id && this.data.users[id]) return { userId: id, created: false };
+    id = this.idByEmail(email);
+    if (id) {
+      Object.assign(this.data.users[id], { googleSub: sub, emailVerified: true });
+      this.byGoogle.set(sub, id);
+      this.save();
+      return { userId: id, created: false, linked: true };
+    }
+    id = `u_${token(9)}`;
+    const norm = normalizeEmail(email);
+    this.data.users[id] = { email: norm, salt: null, hash: null, googleSub: sub, createdAt: this.now(), overlayToken: token(18), autoConnect: false, emailVerified: true };
+    this.byEmail.set(norm, id);
+    this.byOverlay.set(this.data.users[id].overlayToken, id);
+    this.byGoogle.set(sub, id);
+    this.save();
+    return { userId: id, created: true };
+  }
+
+  hasPassword(id) {
+    return Boolean(this.data.users[id]?.hash);
   }
 
   // --- e-mail confirmation -----------------------------------------------------
@@ -154,9 +183,10 @@ export class AccountStore {
     return r.userId;
   }
 
+  // Accounts created through Google have no password yet: they may set one without "current".
   changePassword(id, current, password) {
     const u = this.data.users[id];
-    if (!u || !verifyPassword(current, u.salt, u.hash)) throw new Error('Текущий пароль неверный');
+    if (!u || (u.hash && !verifyPassword(current, u.salt, u.hash))) throw new Error('Текущий пароль неверный');
     if (String(password || '').length < 8) throw new Error('Пароль должен быть не короче 8 символов');
     Object.assign(u, hashPassword(password));
     this.save();
