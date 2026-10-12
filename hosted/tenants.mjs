@@ -14,6 +14,7 @@ const IDLE_MS = 30 * 60 * 1000;
 const NOOP_KEYS = { name: 'disabled-in-web', down: () => {}, up: () => {} };
 const DESKTOP_ONLY = 'Доступно только в приложении для ПК: сервер не может нажимать клавиши или управлять OBS на вашем компьютере.';
 const LIVE_STATES = new Set(['connecting', 'connected', 'reconnecting']);
+const VERIFY_FIRST = 'Подтвердите e-mail — ссылка в письме после регистрации. После этого можно подключать эфир и пользоваться ИИ.';
 
 class HttpError extends Error {
   constructor(status, message) {
@@ -95,6 +96,8 @@ export class TenantManager {
     // The server's TikTok signing key is used for everyone but never written into user config
     // (config is sent to the browser).
     studio.connect = async (username) => {
+      // Unconfirmed accounts can configure everything but not spend server resources (TikTok signing, Claude).
+      if (!this.accounts.isVerified(userId)) throw new HttpError(403, VERIFY_FIRST);
       const s = studio.cfg.settings;
       if (username) {
         s.username = username;
@@ -107,7 +110,7 @@ export class TenantManager {
     const baseState = studio.state.bind(studio);
     studio.state = () => ({
       ...baseState(),
-      hosted: { email: this.accounts.user(userId)?.email, overlayPath: `/o/${this.accounts.user(userId)?.overlayToken}/`, desktopOnly: ['keyboard', 'obs'], aiReady: Boolean(this.anthropic) },
+      hosted: { emailVerified: this.accounts.isVerified(userId), email: this.accounts.user(userId)?.email, overlayPath: `/o/${this.accounts.user(userId)?.overlayToken}/`, desktopOnly: ['keyboard', 'obs'], aiReady: Boolean(this.anthropic) },
     });
 
     const routes = buildRoutes(studio, broadcast);
@@ -148,6 +151,12 @@ export class TenantManager {
     return { userId, studio, clients, routes, lastActive: this.now() };
   }
 
+  // Tell an open dashboard that the address got confirmed (e.g. link opened on the phone).
+  notifyVerified(userId) {
+    const t = this.tenants.get(userId);
+    if (t) t.studio.broadcast('account', { emailVerified: true });
+  }
+
   // Push the new plan to an open dashboard right after a subscription webhook.
   notifyLicense(userId) {
     const t = this.tenants.get(userId);
@@ -173,6 +182,7 @@ export class TenantManager {
         messages: {
           create: async (req) => {
             if (!this.anthropic) throw new AiError('ИИ на этом сервере не настроен', 503);
+            if (!this.accounts.isVerified(userId)) throw new AiError(VERIFY_FIRST, 403);
             const plan = license.status().plan;
             if (plan === 'expired') throw new AiError('Пробный период закончился — оформите TikLive Pro, чтобы ИИ продолжал отвечать', 402);
             const month = new Date(this.now()).toISOString().slice(0, 7);
@@ -194,7 +204,7 @@ export class TenantManager {
   // After a restart, streams that were connected come back on their own.
   async autostart({ delayMs = 2000 } = {}) {
     for (const id of this.accounts.allUserIds()) {
-      if (!this.accounts.user(id)?.autoConnect) continue;
+      if (!this.accounts.user(id)?.autoConnect || !this.accounts.isVerified(id)) continue;
       const t = this.get(id);
       if (t.studio.cfg.settings.username) t.studio.connect().catch((e) => this.log(`[tenant] autostart ${id}: ${e.message}`));
       if (delayMs) await new Promise((r) => setTimeout(r, delayMs)); // don't hammer TikTok/sign server at once

@@ -7,6 +7,7 @@ import { dirname } from 'node:path';
 
 const SESSION_DAYS = 30;
 const RESET_MS = 60 * 60 * 1000;
+const VERIFY_MS = 48 * 60 * 60 * 1000;
 const sha = (s) => createHash('sha256').update(String(s)).digest('hex');
 const token = (bytes = 24) => randomBytes(bytes).toString('base64url');
 
@@ -29,8 +30,9 @@ export class AccountStore {
   constructor(file, { now = () => Date.now() } = {}) {
     this.file = file;
     this.now = now;
-    this.data = { users: {}, sessions: {}, resets: {} };
+    this.data = { users: {}, sessions: {}, resets: {}, verifies: {} };
     if (file && existsSync(file)) this.data = { ...this.data, ...JSON.parse(readFileSync(file, 'utf8')) };
+    this.data.verifies ||= {};
     this.byEmail = new Map(Object.entries(this.data.users).map(([id, u]) => [u.email, id]));
     this.byOverlay = new Map(Object.entries(this.data.users).map(([id, u]) => [u.overlayToken, id]));
   }
@@ -42,14 +44,16 @@ export class AccountStore {
     renameSync(`${this.file}.tmp`, this.file);
   }
 
-  signup(rawEmail, password) {
+  // verified=false when the server sends a confirmation letter; accounts created before
+  // this feature (no field) count as verified.
+  signup(rawEmail, password, { verified = true } = {}) {
     const email = normalizeEmail(rawEmail);
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 200) throw new Error('Некорректный e-mail');
     if (String(password || '').length < 8) throw new Error('Пароль должен быть не короче 8 символов');
     if (this.byEmail.has(email)) throw new Error('Этот e-mail уже зарегистрирован');
     const id = `u_${token(9)}`;
     const { salt, hash } = hashPassword(password);
-    this.data.users[id] = { email, salt, hash, createdAt: this.now(), overlayToken: token(18), autoConnect: false };
+    this.data.users[id] = { email, salt, hash, createdAt: this.now(), overlayToken: token(18), autoConnect: false, emailVerified: verified };
     this.byEmail.set(email, id);
     this.byOverlay.set(this.data.users[id].overlayToken, id);
     this.save();
@@ -102,6 +106,30 @@ export class AccountStore {
     this.save();
   }
 
+  // --- e-mail confirmation -----------------------------------------------------
+  isVerified(id) {
+    return this.data.users[id]?.emailVerified !== false;
+  }
+
+  createVerifyToken(id) {
+    const t = token(32);
+    for (const [k, v] of Object.entries(this.data.verifies)) if (v.userId === id || v.expires < this.now()) delete this.data.verifies[k];
+    this.data.verifies[sha(t)] = { userId: id, expires: this.now() + VERIFY_MS };
+    this.save();
+    return t;
+  }
+
+  // Returns the user id; throws for unknown/expired links.
+  verifyEmail(t) {
+    const key = sha(t || '');
+    const v = this.data.verifies[key];
+    if (!v || v.expires < this.now() || !this.data.users[v.userId]) throw new Error('Ссылка подтверждения недействительна или устарела. Отправьте письмо ещё раз из панели.');
+    delete this.data.verifies[key];
+    this.data.users[v.userId].emailVerified = true;
+    this.save();
+    return v.userId;
+  }
+
   // --- password reset ----------------------------------------------------------
   // Single-use token, valid for an hour, stored only as a hash.
   createResetToken(id) {
@@ -118,7 +146,8 @@ export class AccountStore {
     if (!r || r.expires < this.now() || !this.data.users[r.userId]) throw new Error('Ссылка для сброса недействительна или устарела. Запросите новую.');
     if (String(password || '').length < 8) throw new Error('Пароль должен быть не короче 8 символов');
     delete this.data.resets[key];
-    Object.assign(this.data.users[r.userId], hashPassword(password));
+    // The reset link proved access to the mailbox, so the address counts as confirmed too.
+    Object.assign(this.data.users[r.userId], hashPassword(password), { emailVerified: true });
     // Log out everywhere: whoever knew the old password loses access.
     for (const [k, s] of Object.entries(this.data.sessions)) if (s.userId === r.userId) delete this.data.sessions[k];
     this.save();

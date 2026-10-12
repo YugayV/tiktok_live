@@ -66,6 +66,9 @@
   if (pass?.isConnected) pass.autocomplete = m.autocomplete;
   if (mode === 'signup') pass.placeholder = 'не короче 8 символов';
   if (mode === 'reset' && !resetToken) $('err').textContent = 'В ссылке нет кода сброса. Запросите новую ссылку.';
+  const q = new URLSearchParams(location.search);
+  if (q.has('verified')) $('ok').textContent = '✅ E-mail подтверждён. Войдите в аккаунт.';
+  if (q.get('verify_error')) $('err').textContent = q.get('verify_error');
 
   $('form').addEventListener('submit', async (e) => {
     e.preventDefault();

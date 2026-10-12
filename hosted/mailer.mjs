@@ -31,3 +31,14 @@ export function resetEmail(link) {
 <p style="color:#666;font-size:13px">Если вы не запрашивали сброс — просто проигнорируйте письмо, пароль останется прежним.</p></div>`;
   return { subject: 'Сброс пароля TikLive Studio', text, html };
 }
+
+export function verifyEmail(link) {
+  const text = `Добро пожаловать в TikLive Studio!\n\nПодтвердите e-mail, чтобы подключать эфиры TikTok и пользоваться ИИ (ссылка действует 48 часов):\n${link}\n\nЕсли вы не регистрировались — просто проигнорируйте это письмо.`;
+  const html = `<div style="font-family:Segoe UI,Arial,sans-serif;max-width:480px;margin:auto;padding:24px;color:#1b1d27">
+<h2 style="margin:0 0 12px">Подтвердите e-mail</h2>
+<p>Добро пожаловать в TikLive Studio! Осталось подтвердить адрес — после этого можно подключать эфиры TikTok и пользоваться ИИ.</p>
+<p style="margin:24px 0"><a href="${esc(link)}" style="background:#fe2c55;color:#fff;padding:12px 22px;border-radius:10px;text-decoration:none;font-weight:700">Подтвердить e-mail</a></p>
+<p style="color:#666;font-size:13px">Ссылка действует 48 часов. Если кнопка не работает: <br>${esc(link)}</p>
+<p style="color:#666;font-size:13px">Если вы не регистрировались — просто проигнорируйте письмо.</p></div>`;
+  return { subject: 'Подтвердите e-mail — TikLive Studio', text, html };
+}

@@ -648,8 +648,26 @@
 
   // ---------- live socket ----------
   // Web version: account bar, hide what a server cannot do on the streamer's PC.
+  function renderVerify(verified) {
+    let b = $('#verifyBanner');
+    if (verified) return b?.remove();
+    if (b) return;
+    b = document.createElement('div');
+    b.id = 'verifyBanner';
+    b.className = 'plan-banner expired';
+    b.innerHTML = `📧 Подтвердите e-mail ${esc(S.hosted.email)} — ссылка в письме. До этого не работают подключение эфира и ИИ.`;
+    b.append(button('Отправить письмо ещё раз', () => api('/api/account/resend-verification', {}).then((r) => toast(r.message)).catch((e) => toast(e.message, true))));
+    $('header').after(b);
+  }
+
   function applyHosted(h) {
-    if (!h || $('#account')) return;
+    if (!h) return;
+    renderVerify(h.emailVerified);
+    const q = new URLSearchParams(location.search);
+    if (q.has('verified')) toast('✅ E-mail подтверждён');
+    if (q.get('verify_error')) toast(q.get('verify_error'), true);
+    if (q.has('verified') || q.has('verify_error')) history.replaceState(null, '', location.pathname);
+    if ($('#account')) return;
     const bar = document.createElement('div');
     bar.id = 'account';
     bar.className = 'account';
@@ -745,6 +763,13 @@
         case 'songs': return renderSongs(payload);
         case 'license': return renderLicense(payload);
         case 'update': return renderUpdate(payload);
+        case 'account':
+          if (S.hosted && payload.emailVerified) {
+            S.hosted.emailVerified = true;
+            renderVerify(true);
+            toast('✅ E-mail подтверждён');
+          }
+          return;
         case 'ai': return addAi(payload);
         case 'goals':
           if (!dirty) {

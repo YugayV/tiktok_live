@@ -11,7 +11,7 @@ import { AccountStore } from './accounts.mjs';
 import { TenantManager } from './tenants.mjs';
 import { PUBLIC, MIME, send, readJson } from '../src/server-app.mjs';
 import { verifySignature, applyWebhook } from './billing.mjs';
-import { createMailer, resetEmail } from './mailer.mjs';
+import { createMailer, resetEmail, verifyEmail } from './mailer.mjs';
 
 const HOSTED_PUBLIC = join(dirname(fileURLToPath(import.meta.url)), 'public');
 const COOKIE = 'tl_session';
@@ -61,6 +61,7 @@ export function startHostedServer({
   mailer = createMailer({}),
   webhookSecret = '', // Lemon Squeezy signing secret
   authLimit = 10, // auth attempts per IP per 15 minutes
+  requireEmailVerification, // default: on whenever e-mail can actually be sent
   fetchImpl = globalThis.fetch,
   now = () => Date.now(),
   log = console.log,
@@ -71,6 +72,15 @@ export function startHostedServer({
   const signupLimiter = new Limiter(authLimit, 15 * 60 * 1000, now);
   const resetLimiter = new Limiter(3, 60 * 60 * 1000, now); // per e-mail address
   const baseUrl = publicUrl.replace(/\/+$/, '');
+  const verifyOn = requireEmailVerification ?? Boolean(baseUrl && mailer.enabled);
+  if (!verifyOn) log('[web] подтверждение e-mail выключено (нужны PUBLIC_URL и почта) — новые аккаунты активны сразу');
+  const resendLimiter = new Limiter(3, 60 * 60 * 1000, now); // per account
+
+  function sendVerification(userId) {
+    const u = accounts.user(userId);
+    const link = `${baseUrl}/verify?token=${encodeURIComponent(accounts.createVerifyToken(userId))}`;
+    mailer.send({ to: u.email, ...verifyEmail(link) }).catch((err) => log(`[mail] verify for ${userId}: ${err.message}`));
+  }
 
   const ipOf = (req) => (trustProxy && String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()) || req.socket.remoteAddress || '';
   const isSecure = (req) => secureCookies || (trustProxy && req.headers['x-forwarded-proto'] === 'https');
@@ -192,7 +202,8 @@ export function startHostedServer({
         const b = await readJson(req);
         if (path === '/auth/signup' && !allowSignup) return send(res, 403, { error: 'Регистрация закрыта' });
         try {
-          const userId = path === '/auth/signup' ? accounts.signup(b.email, b.password) : accounts.login(b.email, b.password);
+          const userId = path === '/auth/signup' ? accounts.signup(b.email, b.password, { verified: !verifyOn }) : accounts.login(b.email, b.password);
+          if (path === '/auth/signup' && verifyOn) sendVerification(userId);
           setSession(req, res, userId);
           return send(res, 200, { ok: true });
         } catch (err) {
@@ -208,6 +219,25 @@ export function startHostedServer({
 
       // --- pages --------------------------------------------------------------
       if (path === '/') return redirect(res, sessionUser(req) ? '/app' : '/login');
+      // Link from the confirmation letter. Single-use token; a mail scanner opening it first still confirms.
+      if (req.method === 'GET' && path === '/verify') {
+        try {
+          const userId = accounts.verifyEmail(url.searchParams.get('token'));
+          tenants.notifyVerified(userId);
+          return redirect(res, sessionUser(req) ? '/app?verified=1' : '/login?verified=1');
+        } catch (err) {
+          return redirect(res, `${sessionUser(req) ? '/app' : '/login'}?verify_error=${encodeURIComponent(err.message)}`);
+        }
+      }
+      if (req.method === 'POST' && path === '/api/account/resend-verification') {
+        const userId = sessionUser(req);
+        if (!userId) return send(res, 401, { error: 'Войдите в аккаунт' });
+        if (accounts.isVerified(userId)) return send(res, 200, { ok: true, message: 'E-mail уже подтверждён' });
+        if (!verifyOn) return send(res, 503, { error: 'Отправка писем на этом сервере не настроена' });
+        if (!resendLimiter.hit(userId)) return send(res, 429, { error: 'Письмо уже отправлялось несколько раз. Проверьте папку «Спам» или попробуйте через час.' });
+        sendVerification(userId);
+        return send(res, 200, { ok: true, message: `Письмо отправлено на ${accounts.user(userId).email}` });
+      }
       if (path === '/forgot' || path === '/reset') return file(res, join(HOSTED_PUBLIC, 'auth.html'));
       if (path === '/login' || path === '/signup') return sessionUser(req) ? redirect(res, '/app') : file(res, join(HOSTED_PUBLIC, 'auth.html'));
       if (path === '/app') return sessionUser(req) ? file(res, join(PUBLIC, 'dashboard.html'), { 'content-security-policy': "frame-ancestors 'self'" }) : redirect(res, '/login');

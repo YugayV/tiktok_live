@@ -126,9 +126,10 @@ test('web: password reset by e-mail', async (t) => {
   const r2 = await h.client()('/auth/forgot', { email: 'ghost@example.com' });
   assert.deepEqual(r1.json, r2.json);
   await new Promise((r) => setTimeout(r, 20));
-  assert.equal(h.mails.length, 1);
-  assert.equal(h.mails[0].to, 'a@example.com');
-  const link = /https:\/\/app\.example\.com\/reset\?token=(\S+)/.exec(h.mails[0].text);
+  const resets = h.mails.filter((m) => /Сброс/.test(m.subject));
+  assert.equal(resets.length, 1);
+  assert.equal(resets[0].to, 'a@example.com');
+  const link = /https:\/\/app\.example\.com\/reset\?token=(\S+)/.exec(resets[0].text);
   assert.ok(link, 'link uses PUBLIC_URL, not the request Host');
   const token = decodeURIComponent(link[1]);
 
@@ -158,4 +159,65 @@ test('web: failed logins lock the IP, successful ones do not', async (t) => {
   for (let i = 0; i < 5; i++) assert.equal((await h.client()('/auth/login', { email: 'a@example.com', password: 'password1' })).status, 200);
   for (let i = 0; i < 3; i++) assert.equal((await h.client()('/auth/login', { email: 'a@example.com', password: 'wrong-pass' })).status, 401);
   assert.equal((await h.client()('/auth/login', { email: 'a@example.com', password: 'password1' })).status, 429);
+});
+
+test('web: e-mail confirmation gates TikTok connection and AI, link confirms once', async (t) => {
+  const h = await boot();
+  t.after(() => h.cleanup());
+  const a = h.client();
+  await a('/auth/signup', { email: 'new@example.com', password: 'password1' });
+  await new Promise((r) => setTimeout(r, 20));
+  const letter = h.mails.find((m) => /Подтвердите/.test(m.subject));
+  assert.equal(letter.to, 'new@example.com');
+  const token = decodeURIComponent(/\/verify\?token=(\S+)/.exec(letter.text)[1]);
+
+  let st = (await a('/api/state')).json;
+  assert.equal(st.hosted.emailVerified, false);
+  const blocked = await a('/api/connect', { username: 'someone' });
+  assert.equal(blocked.status, 403);
+  assert.match(blocked.json.error, /Подтвердите e-mail/);
+  // Configuration and the simulator stay available.
+  assert.equal((await a('/api/simulate', { type: 'follow' })).status, 200);
+
+  // Resend is limited per account.
+  for (let i = 0; i < 3; i++) assert.equal((await a('/api/account/resend-verification', {})).status, 200);
+  assert.equal((await a('/api/account/resend-verification', {})).status, 429);
+
+  // The newest link works (older ones were replaced when resending).
+  await new Promise((r) => setTimeout(r, 20));
+  const latest = h.mails.filter((m) => /Подтвердите/.test(m.subject)).at(-1);
+  const fresh = decodeURIComponent(/\/verify\?token=(\S+)/.exec(latest.text)[1]);
+  assert.notEqual(fresh, token);
+  const base = `http://127.0.0.1:${h.app.server.address().port}`;
+  const stale = await fetch(`${base}/verify?token=${encodeURIComponent(token)}`, { redirect: 'manual' });
+  assert.match(stale.headers.get('location'), /verify_error/);
+  const ok = await fetch(`${base}/verify?token=${encodeURIComponent(fresh)}`, { redirect: 'manual' });
+  assert.equal(ok.headers.get('location'), '/login?verified=1');
+  const again = await fetch(`${base}/verify?token=${encodeURIComponent(fresh)}`, { redirect: 'manual' });
+  assert.match(again.headers.get('location'), /verify_error/); // single use
+
+  st = (await a('/api/state')).json;
+  assert.equal(st.hosted.emailVerified, true);
+  assert.equal((await a('/api/account/resend-verification', {})).json.message, 'E-mail уже подтверждён');
+});
+
+test('web: password reset also confirms the address; servers without mail keep accounts active', async (t) => {
+  const h = await boot();
+  t.after(() => h.cleanup());
+  const a = h.client();
+  await a('/auth/signup', { email: 'r@example.com', password: 'password1' });
+  await a('/auth/forgot', { email: 'r@example.com' });
+  await new Promise((r) => setTimeout(r, 20));
+  const reset = h.mails.find((m) => /Сброс/.test(m.subject));
+  const token = decodeURIComponent(/reset\?token=(\S+)/.exec(reset.text)[1]);
+  const b = h.client();
+  await b('/auth/reset', { token, password: 'newpassword1' });
+  assert.equal((await b('/api/state')).json.hosted.emailVerified, true);
+
+  const h2 = await boot({ publicUrl: '' });
+  t.after(() => h2.cleanup());
+  const c = h2.client();
+  await c('/auth/signup', { email: 'x@example.com', password: 'password1' });
+  assert.equal((await c('/api/state')).json.hosted.emailVerified, true);
+  assert.equal(h2.mails.length, 0);
 });
