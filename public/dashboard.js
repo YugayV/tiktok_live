@@ -474,6 +474,8 @@
       else el.value = v ?? '';
     }
     $('#obsState').textContent = S.obs ? '● подключен' : '';
+    loadVoices();
+    renderAudioHint();
   }
   $('#settingsForm').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -646,6 +648,53 @@
     }),
   );
 
+  // ---------- sound & TTS in the app ----------
+  // By default TikLive speaks and plays sounds itself: OBS's built-in browser often has no
+  // speech voices, so relying on the overlay alone left streamers with silent TTS.
+  const inApp = (output) => (output || S?.config?.settings?.tts?.output || 'app') === 'app';
+  let voices = [];
+  function loadVoices() {
+    if (!('speechSynthesis' in window)) return;
+    voices = speechSynthesis.getVoices();
+    const sel = $('#ttsVoice');
+    if (!sel || !voices.length) return;
+    const current = S?.config?.settings?.tts?.voice || sel.value;
+    sel.replaceChildren(new Option('Автоматически по языку', ''), ...voices.map((v) => new Option(`${v.name} (${v.lang})`, v.name)));
+    sel.value = current;
+  }
+  if ('speechSynthesis' in window) {
+    loadVoices();
+    speechSynthesis.addEventListener?.('voiceschanged', loadVoices);
+  }
+  function speakInApp(p) {
+    if (!inApp(p.output) || !('speechSynthesis' in window) || !p.text) return;
+    const u = new SpeechSynthesisUtterance(p.text);
+    u.lang = p.lang || 'ru-RU';
+    u.rate = p.rate || 1;
+    u.volume = p.volume ?? 1;
+    const v = voices.find((x) => x.name === p.voice) || voices.find((x) => x.lang === u.lang) || voices.find((x) => x.lang.startsWith(u.lang.slice(0, 2)));
+    if (v) u.voice = v;
+    speechSynthesis.speak(u);
+  }
+  function soundInApp(url, volume = 1, output) {
+    if (!inApp(output) || !url) return;
+    const a = new Audio(url);
+    a.volume = Math.max(0, Math.min(1, volume));
+    a.play().catch(() => {});
+  }
+  // Browsers unlock audio after the first click; a no-op utterance warms the speech engine up.
+  document.addEventListener('click', () => 'speechSynthesis' in window && speechSynthesis.resume(), { once: true });
+  $('#ttsCheck').onclick = () => {
+    const f = $('#settingsForm');
+    speakInApp({ text: 'Привет! Так будет звучать озвучка на эфире.', lang: f.elements['tts.lang'].value, voice: f.elements['tts.voice'].value, rate: Number(f.elements['tts.rate'].value) || 1, volume: 1, output: 'app' });
+  };
+  function renderAudioHint() {
+    const o = S?.config?.settings?.tts?.output || 'app';
+    $('#audioHint').textContent = o === 'app' ? '🔊 Звук и озвучка играют в этой программе' : '🔊 Звук и озвучка — в оверлее OBS';
+    const src = `${overlayBase()}?w=alerts&preview=1&audio=0`;
+    if ($('#alertPreview').getAttribute('src') !== src) $('#alertPreview').src = src;
+  }
+
   // ---------- live socket ----------
   // Web version: account bar, hide what a server cannot do on the streamer's PC.
   function renderVerify(verified) {
@@ -774,7 +823,17 @@
         case 'event': return addFeed(payload);
         case 'log': return addLog(payload);
         case 'stats': return renderStats(payload);
-        case 'alert': return renderQueue({ ...S.queue, current: payload });
+        case 'alert':
+          soundInApp(payload.sound, 1, payload.output);
+          return renderQueue({ ...S.queue, current: payload });
+        case 'tts': return speakInApp(payload);
+        case 'sound': return soundInApp(payload.url, payload.volume, payload.output);
+        case 'config':
+          if (!dirty) {
+            S.config = payload;
+            renderAudioHint();
+          }
+          return;
         case 'poll': return renderPoll(payload);
         case 'battle': return renderBattle(payload);
         case 'songs': return renderSongs(payload);

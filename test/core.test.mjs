@@ -134,11 +134,12 @@ test('studio end-to-end: event -> rule -> alert/tts broadcast + points', async (
   assert.ok(sent.some((m) => m.type === 'tts'));
   assert.equal(studio.getPoints('alice'), 10000);
 
-  // !tts costs 50 points and censors links.
+  // !tts is free by default and censors links.
   studio.handleEvent(normalize('chat', { user, comment: '!tts look https://spam.example now' }));
   const tts = sent.filter((m) => m.type === 'tts').at(-1);
   assert.equal(tts.payload.text, 'Alice говорит: look [ссылка] now');
-  assert.equal(studio.getPoints('alice'), 10000 + 1 - 50);
+  assert.equal(studio.getPoints('alice'), 10000 + 1);
+  assert.equal(tts.payload.output, 'app'); // spoken by the TikLive window, not only OBS
 
   // Duplicate gift events are ignored.
   const before = studio.stats.totals.diamonds;

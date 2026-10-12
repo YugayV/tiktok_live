@@ -12,20 +12,24 @@
   const img = (src, cls) => (src ? `<img class="${cls}" src="${esc(src)}" onerror="this.remove()" alt="">` : '');
 
   // ---------------- audio (sound + TTS) ----------------
-  const audioOn = widget === 'audio' || (widget === 'alerts' && params.get('audio') !== '0');
-  function playSound(url, volume = 1) {
-    if (!audioOn || !url) return;
+  // Where sound plays is a setting: 'app' (TikLive window, default) or 'obs' (this overlay).
+  // ?w=audio always plays, &audio=1 forces it on, &audio=0 forces it off.
+  const forced = widget === 'audio' || params.get('audio') === '1';
+  const audioOn = (output) => params.get('audio') !== '0' && (forced || (widget === 'alerts' && output === 'obs'));
+  function playSound(url, volume = 1, output) {
+    if (!audioOn(output) || !url) return;
     const a = new Audio(url);
     a.volume = Math.max(0, Math.min(1, volume));
     a.play().catch(() => {});
   }
-  function speak({ text, lang, rate, volume }) {
-    if (!audioOn || !('speechSynthesis' in window)) return;
+  function speak({ text, lang, voice: voiceName, rate, volume, output }) {
+    if (!audioOn(output) || !('speechSynthesis' in window)) return;
     const u = new SpeechSynthesisUtterance(text);
     u.lang = lang || 'ru-RU';
     u.rate = rate || 1;
     u.volume = volume ?? 1;
-    const voice = speechSynthesis.getVoices().find((v) => v.lang === u.lang);
+    const voices = speechSynthesis.getVoices();
+    const voice = voices.find((v) => v.name === voiceName) || voices.find((v) => v.lang === u.lang);
     if (voice) u.voice = voice;
     speechSynthesis.speak(u);
   }
@@ -68,7 +72,7 @@
       el.className = `alert ${a.style || ''}`;
       el.innerHTML = `${img(a.avatar, 'avatar')}<div class="txt shadow">${esc(a.text)}${a.count > 1 ? `<span class="cnt">×${a.count}</span>` : ''}</div>${img(a.image, 'gift')}`;
       this.stage.replaceChildren(el);
-      playSound(a.sound);
+      playSound(a.sound, 1, a.output);
       if (a.confetti) confetti();
       const ms = (a.duration || 5) * 1000;
       setTimeout(() => el.classList.add('out'), Math.max(300, ms - 400));
@@ -366,7 +370,7 @@
         first = false;
         return;
       }
-      if (type === 'sound') return playSound(payload.url, payload.volume);
+      if (type === 'sound') return playSound(payload.url, payload.volume, payload.output);
       if (type === 'tts') return speak(payload);
       if (type === 'config' && w.config) return w.config(payload);
       if (typeof w[type] === 'function' && type !== 'init') w[type](payload);

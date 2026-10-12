@@ -13,7 +13,9 @@ export const DEFAULT_CONFIG = {
     autoReconnect: true,
     signApiKey: '',
     obs: { enabled: false, url: 'ws://127.0.0.1:4455', password: '' },
-    tts: { lang: 'ru-RU', rate: 1, volume: 1, maxLength: 200, readAllChat: false },
+    // output: 'app' — speak and play sounds in the TikLive window (works everywhere);
+    //         'obs' — only in the OBS alerts overlay (OBS's browser often has no TTS voices).
+    tts: { lang: 'ru-RU', voice: '', rate: 1, volume: 1, maxLength: 200, readAllChat: false, output: 'app' },
     bannedWords: '',
     pointRates: DEFAULT_POINT_RATES,
     alertMergeWindow: true,
@@ -72,12 +74,12 @@ export const DEFAULT_CONFIG = {
     },
     {
       id: 'r-tts',
-      name: 'Команда !tts (стоит 50 очков)',
+      name: 'Команда !tts — озвучить сообщение',
       enabled: true,
       priority: 0,
       trigger: { type: 'chat', command: '!tts' },
       cooldown: { perUser: 30 },
-      cost: 50,
+      cost: 0,
       actions: [{ type: 'tts', text: '{nickname} говорит: {args}' }],
     },
     {

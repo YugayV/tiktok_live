@@ -55,10 +55,11 @@ export class Studio {
     this.broadcast = broadcast;
     this.fetch = fetchImpl;
     this.config = new JsonStore(dataDir && join(dataDir, 'config.json'), DEFAULT_CONFIG);
+    this.migrateConfig();
     this.viewers = new JsonStore(dataDir && join(dataDir, 'viewers.json'), { users: {} }, { delay: 3000 });
     this.engine = new RuleEngine();
     this.stats = new SessionStats();
-    this.queue = new AlertQueue({ onPlay: (a) => this.broadcast('alert', a) });
+    this.queue = new AlertQueue({ onPlay: (a) => this.broadcast('alert', { ...a, output: this.cfg?.settings?.tts?.output || 'app' }) });
     this.sim = new Simulator((ev) => this.handleEvent(ev));
     this.source = new TikTokSource();
     this.obs = new ObsClient();
@@ -94,6 +95,23 @@ export class Studio {
 
     this.statsTimer = setInterval(() => this.flushStats(), 1000);
     this.statsTimer.unref?.();
+  }
+
+  // One-time fixes for configs saved by older versions.
+  migrateConfig() {
+    const s = this.config.data.settings;
+    const done = (s.migrations ||= []);
+    if (!done.includes('tts-in-app')) {
+      // Old default made !tts cost 50 points, so new viewers could never use it.
+      const r = this.config.data.rules.find((x) => x.id === 'r-tts');
+      if (r && r.cost === 50) {
+        r.cost = 0;
+        r.name = 'Команда !tts — озвучить сообщение';
+      }
+      s.tts.output ||= 'app';
+      done.push('tts-in-app');
+      this.config.save();
+    }
   }
 
   get cfg() {
@@ -206,7 +224,7 @@ export class Studio {
   speak(text) {
     const tts = this.cfg.settings.tts;
     const clean = this.censor(text).slice(0, tts.maxLength || 200);
-    if (clean.trim()) this.broadcast('tts', { text: clean, lang: tts.lang, rate: tts.rate, volume: tts.volume });
+    if (clean.trim()) this.broadcast('tts', { text: clean, lang: tts.lang, voice: tts.voice, rate: tts.rate, volume: tts.volume, output: tts.output || 'app' });
   }
 
   // --- updates ---------------------------------------------------------------
@@ -288,7 +306,7 @@ export class Studio {
           this.speak(render(action.text, ev));
           break;
         case 'sound':
-          this.broadcast('sound', { url: action.url, volume: action.volume ?? 1 });
+          this.broadcast('sound', { url: action.url, volume: action.volume ?? 1, output: this.cfg.settings.tts.output || 'app' });
           break;
         case 'goal': {
           const goal = this.cfg.goals.find((g) => g.id === action.goalId);

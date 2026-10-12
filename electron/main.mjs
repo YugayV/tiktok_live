@@ -45,7 +45,9 @@ function createWindow() {
     title: 'TikLive Studio',
     icon: join(HERE, '..', 'build', 'icon.png'),
     autoHideMenuBar: true,
-    webPreferences: { contextIsolation: true, sandbox: true },
+    // TTS and alert sounds play in this window: allow audio without a click and keep the page
+    // running at full speed while it sits hidden in the tray.
+    webPreferences: { contextIsolation: true, sandbox: true, autoplayPolicy: 'no-user-gesture-required', backgroundThrottling: false },
   });
   win.loadURL(`${base}/`);
   // Links to other sites (docs, TikTok) open in the system browser, not inside the app.
