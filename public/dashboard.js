@@ -591,12 +591,19 @@
 
     const st = $('#proStatus');
     st.className = `pro-status ${l.plan}`;
-    if (l.plan === 'pro') st.innerHTML = `Статус: <b>Pro активен</b> · ключ ${esc(l.key)}${l.customerEmail ? ' · ' + esc(l.customerEmail) : ''}${l.expiresAt ? ' · до ' + new Date(l.expiresAt).toLocaleDateString('ru-RU') : ''}`;
+    const sub = l.subscription;
+    const SUB_STATUS = { active: 'активна', on_trial: 'активна', past_due: 'проблема с оплатой — обновите карту', cancelled: 'отменена', paused: 'на паузе', unpaid: 'не оплачена', expired: 'закончилась' };
+    if (sub?.active) st.innerHTML = `Статус: <b>Pro активен</b> · подписка ${esc(SUB_STATUS[sub.status] || sub.status)}${sub.expiresAt ? (sub.status === 'cancelled' ? ' · работает до ' : ' · следующее списание ') + new Date(sub.expiresAt).toLocaleDateString('ru-RU') : ''}`;
+    else if (l.plan === 'pro') st.innerHTML = `Статус: <b>Pro активен</b> · ключ ${esc(l.key)}${l.customerEmail ? ' · ' + esc(l.customerEmail) : ''}${l.expiresAt ? ' · до ' + new Date(l.expiresAt).toLocaleDateString('ru-RU') : ''}`;
     else if (l.plan === 'trial') st.innerHTML = `Статус: <b>пробный период</b> — до ${new Date(l.trialEndsAt).toLocaleDateString('ru-RU')} (${l.trialDaysLeft} дн.)`;
     else st.innerHTML = `Статус: <b>пробный период закончился</b>${l.key ? ` · ключ ${esc(l.key)}: ${esc(l.licenseStatus || 'не подтверждён')}` : ''}`;
     $('#proPrice').textContent = l.priceLabel;
     const btn = $('#buyBtn');
-    if (l.checkoutUrl) {
+    if (sub?.manageUrl && (sub.active || sub.status === 'past_due')) {
+      btn.href = sub.manageUrl;
+      btn.classList.remove('disabled');
+      btn.textContent = 'Управление подпиской';
+    } else if (l.checkoutUrl) {
       btn.href = l.checkoutUrl;
       btn.classList.remove('disabled');
       btn.textContent = l.plan === 'pro' ? 'Управление подпиской' : 'Оформить подписку';
@@ -671,6 +678,28 @@
       });
     });
     $('#tab-overlays p.muted')?.after(rot);
+
+    const payNote = $('#tab-pro .pro-card > p.muted');
+    if (payNote) payNote.textContent = 'Оплата картой через Lemon Squeezy (налоги и чеки — на их стороне). Подписка привязывается к этому аккаунту. Отменить можно в любой момент кнопкой «Управление подпиской» — Pro будет работать до конца оплаченного месяца.';
+    // Pro arrives by itself after payment; the key form stays only as a fallback.
+    const licForm = $('#licenseForm');
+    if (licForm) {
+      const d = document.createElement('details');
+      d.innerHTML = '<summary class="muted">У меня есть ключ лицензии</summary>';
+      licForm.before(d);
+      d.append(licForm);
+      $('#tab-pro h3')?.replaceWith(Object.assign(document.createElement('p'), { className: 'muted', textContent: 'После оплаты Pro включится автоматически в течение минуты — ключ вводить не нужно.' }));
+    }
+
+    // Change password (web accounts only).
+    const card = document.createElement('form');
+    card.className = 'card';
+    card.innerHTML = '<h3>Аккаунт</h3><label>Текущий пароль<input name="current" type="password" autocomplete="current-password" required></label><label>Новый пароль<input name="password" type="password" minlength="8" autocomplete="new-password" required></label><button class="save">Сменить пароль</button>';
+    card.addEventListener('submit', (e) => {
+      e.preventDefault();
+      call('/auth/change', Object.fromEntries(new FormData(card)), 'Пароль изменён').then((r) => r && card.reset());
+    });
+    $('#settingsForm')?.after(card);
   }
 
   function hydrate(state) {

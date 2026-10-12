@@ -8,6 +8,7 @@ import { Studio } from '../src/studio.mjs';
 import { License } from '../src/license.mjs';
 import { AiError } from '../src/ai.mjs';
 import { buildRoutes } from '../src/server-app.mjs';
+import { subscriptionActive, checkoutUrlFor } from './billing.mjs';
 
 const IDLE_MS = 30 * 60 * 1000;
 const NOOP_KEYS = { name: 'disabled-in-web', down: () => {}, up: () => {} };
@@ -73,10 +74,16 @@ export class TenantManager {
       for (const ws of clients) if (ws.readyState === 1) ws.send(msg);
     };
     // Subscription belongs to the account, not a machine: the trial starts at sign-up.
+    const account = this.accounts.user(userId);
     const license = new License({
       file: join(dir, 'license.json'),
       backupFile: null,
-      config: this.licenseConfig,
+      // The checkout link carries the account id, so the webhook can grant Pro without a key.
+      config: { ...this.licenseConfig, checkoutUrl: checkoutUrlFor(this.licenseConfig.checkoutUrl, { email: account?.email, userId }) },
+      entitlement: () => {
+        const sub = this.accounts.user(userId)?.subscription;
+        return sub ? { active: subscriptionActive(sub, this.now()), status: sub.status, expiresAt: sub.endsAt || sub.renewsAt, manageUrl: sub.manageUrl } : null;
+      },
       fetchImpl: this.fetch,
       now: this.now,
       secret: createHmac('sha256', this.serverSecret).update(`license:${userId}`).digest(),
@@ -139,6 +146,12 @@ export class TenantManager {
     studio.license.startAutoValidate();
     this.log(`[tenant] started ${userId} (${user?.email})`);
     return { userId, studio, clients, routes, lastActive: this.now() };
+  }
+
+  // Push the new plan to an open dashboard right after a subscription webhook.
+  notifyLicense(userId) {
+    const t = this.tenants.get(userId);
+    if (t) t.studio.license.emit();
   }
 
   // Settings that make no sense on a shared server are pinned regardless of what the browser sends.

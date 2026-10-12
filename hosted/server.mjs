@@ -10,6 +10,8 @@ import { WebSocketServer } from 'ws';
 import { AccountStore } from './accounts.mjs';
 import { TenantManager } from './tenants.mjs';
 import { PUBLIC, MIME, send, readJson } from '../src/server-app.mjs';
+import { verifySignature, applyWebhook } from './billing.mjs';
+import { createMailer, resetEmail } from './mailer.mjs';
 
 const HOSTED_PUBLIC = join(dirname(fileURLToPath(import.meta.url)), 'public');
 const COOKIE = 'tl_session';
@@ -37,6 +39,10 @@ class Limiter {
     if (this.hits.size > 50000) this.hits.clear();
     return list.length <= this.max;
   }
+  blocked(key) {
+    const t = this.now();
+    return (this.hits.get(key) || []).filter((x) => t - x < this.windowMs).length >= this.max;
+  }
 }
 
 export function startHostedServer({
@@ -51,13 +57,20 @@ export function startHostedServer({
   trustProxy = false,
   secureCookies = false,
   allowSignup = true,
+  publicUrl = '', // https://app.example.com — required for links in e-mails
+  mailer = createMailer({}),
+  webhookSecret = '', // Lemon Squeezy signing secret
+  authLimit = 10, // auth attempts per IP per 15 minutes
   fetchImpl = globalThis.fetch,
   now = () => Date.now(),
   log = console.log,
 } = {}) {
   const accounts = new AccountStore(join(dataDir, 'accounts.json'), { now });
   const tenants = new TenantManager({ dataDir, accounts, anthropic, ai, licenseConfig, serverSecret, signApiKey, fetchImpl, now, log });
-  const authLimiter = new Limiter(10, 15 * 60 * 1000, now);
+  const authLimiter = new Limiter(authLimit, 15 * 60 * 1000, now); // failed logins, resets, password changes
+  const signupLimiter = new Limiter(authLimit, 15 * 60 * 1000, now);
+  const resetLimiter = new Limiter(3, 60 * 60 * 1000, now); // per e-mail address
+  const baseUrl = publicUrl.replace(/\/+$/, '');
 
   const ipOf = (req) => (trustProxy && String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()) || req.socket.remoteAddress || '';
   const isSecure = (req) => secureCookies || (trustProxy && req.headers['x-forwarded-proto'] === 'https');
@@ -113,9 +126,69 @@ export function startHostedServer({
       if (path === '/healthz') return send(res, 200, { ok: true, tenants: tenants.tenants.size });
       if (!jsonOnly(req)) return send(res, 415, { error: 'Content-Type must be application/json' });
 
+      // --- Lemon Squeezy subscription webhooks -------------------------------------
+      if (req.method === 'POST' && path === '/webhooks/lemonsqueezy') {
+        let raw = '';
+        for await (const chunk of req) {
+          raw += chunk;
+          if (raw.length > 1e6) return send(res, 413, { error: 'too large' });
+        }
+        if (!verifySignature(raw, req.headers['x-signature'], webhookSecret)) return send(res, 401, { error: 'bad signature' });
+        let payload;
+        try {
+          payload = JSON.parse(raw);
+        } catch {
+          return send(res, 400, { error: 'bad json' });
+        }
+        const r = applyWebhook(accounts, payload, licenseConfig);
+        log(`[billing] ${payload?.meta?.event_name}: ${r.handled ? `user ${r.userId} → ${accounts.user(r.userId)?.subscription?.status}` : r.reason}`);
+        if (r.handled) tenants.notifyLicense(r.userId);
+        return send(res, 200, { ok: true });
+      }
+
+      // --- password reset -------------------------------------------------------
+      if (req.method === 'POST' && path === '/auth/forgot') {
+        if (!authLimiter.hit(ipOf(req))) return send(res, 429, { error: 'Слишком много попыток. Подождите 15 минут.' });
+        const b = await readJson(req);
+        if (!baseUrl || !mailer.enabled) return send(res, 503, { error: 'Восстановление пароля на этом сервере не настроено — напишите в поддержку.' });
+        const email = String(b.email || '').trim().toLowerCase();
+        const userId = accounts.idByEmail(email);
+        // Same answer whether or not the account exists; the mail goes out in the background.
+        if (userId && resetLimiter.hit(email)) {
+          const link = `${baseUrl}/reset?token=${encodeURIComponent(accounts.createResetToken(userId))}`;
+          mailer.send({ to: email, ...resetEmail(link) }).catch((err) => log(`[mail] reset for ${userId}: ${err.message}`));
+        }
+        return send(res, 200, { ok: true, message: 'Если аккаунт с этим e-mail существует, мы отправили письмо со ссылкой для сброса пароля.' });
+      }
+      if (req.method === 'POST' && path === '/auth/reset') {
+        if (!authLimiter.hit(ipOf(req))) return send(res, 429, { error: 'Слишком много попыток. Подождите 15 минут.' });
+        const b = await readJson(req);
+        try {
+          setSession(req, res, accounts.resetPassword(b.token, b.password));
+          return send(res, 200, { ok: true });
+        } catch (err) {
+          return send(res, 400, { error: err.message });
+        }
+      }
+      if (req.method === 'POST' && path === '/auth/change') {
+        const userId = sessionUser(req);
+        if (!userId) return send(res, 401, { error: 'Войдите в аккаунт' });
+        if (!authLimiter.hit(ipOf(req))) return send(res, 429, { error: 'Слишком много попыток. Подождите 15 минут.' });
+        const b = await readJson(req);
+        try {
+          accounts.changePassword(userId, b.current, b.password);
+          return send(res, 200, { ok: true });
+        } catch (err) {
+          return send(res, 400, { error: err.message });
+        }
+      }
+
       // --- auth ---------------------------------------------------------------
       if (req.method === 'POST' && (path === '/auth/signup' || path === '/auth/login')) {
-        if (!authLimiter.hit(ipOf(req))) return send(res, 429, { error: 'Слишком много попыток. Подождите 15 минут.' });
+        // Sign-ups always count; logins count only when they fail (guessing), so a user who
+        // logs in successfully many times is never locked out.
+        if (path === '/auth/signup' && !signupLimiter.hit(ipOf(req))) return send(res, 429, { error: 'Слишком много попыток. Подождите 15 минут.' });
+        if (path === '/auth/login' && authLimiter.blocked(ipOf(req))) return send(res, 429, { error: 'Слишком много неудачных попыток. Подождите 15 минут.' });
         const b = await readJson(req);
         if (path === '/auth/signup' && !allowSignup) return send(res, 403, { error: 'Регистрация закрыта' });
         try {
@@ -123,6 +196,7 @@ export function startHostedServer({
           setSession(req, res, userId);
           return send(res, 200, { ok: true });
         } catch (err) {
+          if (path === '/auth/login') authLimiter.hit(ipOf(req));
           return send(res, path === '/auth/login' ? 401 : 400, { error: err.message });
         }
       }
@@ -134,6 +208,7 @@ export function startHostedServer({
 
       // --- pages --------------------------------------------------------------
       if (path === '/') return redirect(res, sessionUser(req) ? '/app' : '/login');
+      if (path === '/forgot' || path === '/reset') return file(res, join(HOSTED_PUBLIC, 'auth.html'));
       if (path === '/login' || path === '/signup') return sessionUser(req) ? redirect(res, '/app') : file(res, join(HOSTED_PUBLIC, 'auth.html'));
       if (path === '/app') return sessionUser(req) ? file(res, join(PUBLIC, 'dashboard.html'), { 'content-security-policy': "frame-ancestors 'self'" }) : redirect(res, '/login');
 

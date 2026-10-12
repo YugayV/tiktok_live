@@ -6,6 +6,7 @@ import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from '
 import { dirname } from 'node:path';
 
 const SESSION_DAYS = 30;
+const RESET_MS = 60 * 60 * 1000;
 const sha = (s) => createHash('sha256').update(String(s)).digest('hex');
 const token = (bytes = 24) => randomBytes(bytes).toString('base64url');
 
@@ -28,7 +29,7 @@ export class AccountStore {
   constructor(file, { now = () => Date.now() } = {}) {
     this.file = file;
     this.now = now;
-    this.data = { users: {}, sessions: {} };
+    this.data = { users: {}, sessions: {}, resets: {} };
     if (file && existsSync(file)) this.data = { ...this.data, ...JSON.parse(readFileSync(file, 'utf8')) };
     this.byEmail = new Map(Object.entries(this.data.users).map(([id, u]) => [u.email, id]));
     this.byOverlay = new Map(Object.entries(this.data.users).map(([id, u]) => [u.overlayToken, id]));
@@ -89,7 +90,47 @@ export class AccountStore {
   }
 
   user(id) {
-    return this.data.users[id] || null;
+    return (id && this.data.users[id]) || null;
+  }
+
+  idByEmail(email) {
+    return this.byEmail.get(normalizeEmail(email)) || null;
+  }
+
+  setSubscription(id, subscription) {
+    this.data.users[id].subscription = subscription;
+    this.save();
+  }
+
+  // --- password reset ----------------------------------------------------------
+  // Single-use token, valid for an hour, stored only as a hash.
+  createResetToken(id) {
+    const t = token(32);
+    for (const [k, r] of Object.entries(this.data.resets)) if (r.userId === id || r.expires < this.now()) delete this.data.resets[k];
+    this.data.resets[sha(t)] = { userId: id, expires: this.now() + RESET_MS };
+    this.save();
+    return t;
+  }
+
+  resetPassword(t, password) {
+    const key = sha(t || '');
+    const r = this.data.resets[key];
+    if (!r || r.expires < this.now() || !this.data.users[r.userId]) throw new Error('Ссылка для сброса недействительна или устарела. Запросите новую.');
+    if (String(password || '').length < 8) throw new Error('Пароль должен быть не короче 8 символов');
+    delete this.data.resets[key];
+    Object.assign(this.data.users[r.userId], hashPassword(password));
+    // Log out everywhere: whoever knew the old password loses access.
+    for (const [k, s] of Object.entries(this.data.sessions)) if (s.userId === r.userId) delete this.data.sessions[k];
+    this.save();
+    return r.userId;
+  }
+
+  changePassword(id, current, password) {
+    const u = this.data.users[id];
+    if (!u || !verifyPassword(current, u.salt, u.hash)) throw new Error('Текущий пароль неверный');
+    if (String(password || '').length < 8) throw new Error('Пароль должен быть не короче 8 символов');
+    Object.assign(u, hashPassword(password));
+    this.save();
   }
 
   userByOverlayToken(t) {

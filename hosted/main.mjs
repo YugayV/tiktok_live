@@ -3,6 +3,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { startHostedServer } from './server.mjs';
+import { createMailer } from './mailer.mjs';
 
 const env = process.env;
 const num = (v) => (v === undefined || v === '' ? undefined : Number(v));
@@ -24,6 +25,9 @@ const app = startHostedServer({
   trustProxy: env.TRUST_PROXY === '1',
   secureCookies: env.SECURE_COOKIES === '1',
   allowSignup: env.ALLOW_SIGNUP !== '0',
+  publicUrl: env.PUBLIC_URL || '',
+  webhookSecret: env.LS_WEBHOOK_SECRET || '',
+  mailer: createMailer({ apiKey: env.RESEND_API_KEY, from: env.MAIL_FROM, devLog: env.MAIL_DEV_LOG === '1' }),
 });
 
 app.ready.then(() => app.tenants.autostart()).catch((err) => {

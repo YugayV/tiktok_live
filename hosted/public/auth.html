@@ -22,6 +22,9 @@
   .err { color: #ff6b81; font-size: 14px; min-height: 20px; margin-top: 10px; }
   .note { color: var(--muted); font-size: 13px; margin-top: 16px; text-align: center; }
   .note a { color: var(--cyan); }
+  .ok { color: #2bd67b; font-size: 14px; }
+  .forgot { text-align: center; margin: 14px 0 0; font-size: 14px; } .forgot a { color: var(--muted); }
+  .hidden { display: none !important; }
 </style>
 </head>
 <body>
@@ -30,37 +33,60 @@
   <p class="sub" id="sub">Интерактивные эфиры TikTok LIVE — прямо в браузере.</p>
   <div class="tabs"><a href="/login" id="tLogin">Вход</a><a href="/signup" id="tSignup">Регистрация</a></div>
   <form id="form">
-    <label>E-mail<input name="email" type="email" autocomplete="email" required></label>
-    <label>Пароль<input name="password" type="password" minlength="8" required></label>
+    <label id="emailField">E-mail<input name="email" type="email" autocomplete="email" required></label>
+    <label id="passField">Пароль<input name="password" type="password" minlength="8" required></label>
     <button id="btn">Войти</button>
     <div class="err" id="err" role="alert"></div>
+    <div class="ok" id="ok" role="status"></div>
+    <p class="forgot" id="forgotLink"><a href="/forgot">Забыли пароль?</a></p>
   </form>
   <p class="note" id="note">Без логина и пароля от TikTok — только ник стримера.<br>Первые 7 дней Pro бесплатно, без карты.</p>
 </main>
 <script>
-  const signup = location.pathname === '/signup';
-  document.getElementById(signup ? 'tSignup' : 'tLogin').classList.add('on');
-  const btn = document.getElementById('btn');
-  btn.textContent = signup ? 'Создать аккаунт' : 'Войти';
-  document.querySelector('[name=password]').autocomplete = signup ? 'new-password' : 'current-password';
-  if (signup) document.querySelector('[name=password]').placeholder = 'не короче 8 символов';
-  document.getElementById('form').addEventListener('submit', async (e) => {
+  // One page, four modes: /login, /signup, /forgot (request a link), /reset?token=… (set a new password).
+  const mode = location.pathname.slice(1);
+  const resetToken = new URLSearchParams(location.search).get('token') || '';
+  const $ = (id) => document.getElementById(id);
+  const pass = document.querySelector('[name=password]');
+  const MODES = {
+    login: { tab: 'tLogin', button: 'Войти', url: '/auth/login', autocomplete: 'current-password' },
+    signup: { tab: 'tSignup', button: 'Создать аккаунт', url: '/auth/signup', autocomplete: 'new-password' },
+    forgot: { button: 'Отправить ссылку', url: '/auth/forgot', sub: 'Введите e-mail аккаунта — пришлём ссылку для сброса пароля.' },
+    reset: { button: 'Сохранить пароль', url: '/auth/reset', autocomplete: 'new-password', sub: 'Придумайте новый пароль (не короче 8 символов).' },
+  };
+  const m = MODES[mode] || MODES.login;
+  if (m.tab) $(m.tab).classList.add('on');
+  else document.querySelector('.tabs').classList.add('hidden');
+  if (m.sub) $('sub').textContent = m.sub;
+  $('btn').textContent = m.button;
+  if (mode === 'forgot') { $('passField').remove(); }
+  if (mode === 'reset') { $('emailField').remove(); pass.placeholder = 'новый пароль'; }
+  if (mode !== 'login') $('forgotLink').classList.add('hidden');
+  if (mode === 'forgot' || mode === 'reset') $('note').innerHTML = '<a href="/login">← Вернуться ко входу</a>';
+  if (pass?.isConnected) pass.autocomplete = m.autocomplete;
+  if (mode === 'signup') pass.placeholder = 'не короче 8 символов';
+  if (mode === 'reset' && !resetToken) $('err').textContent = 'В ссылке нет кода сброса. Запросите новую ссылку.';
+
+  $('form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const err = document.getElementById('err');
-    err.textContent = '';
-    btn.disabled = true;
+    $('err').textContent = '';
+    $('ok').textContent = '';
+    $('btn').disabled = true;
     try {
-      const res = await fetch(signup ? '/auth/signup' : '/auth/login', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(Object.fromEntries(new FormData(e.target))),
-      });
+      const body = Object.fromEntries(new FormData(e.target));
+      if (mode === 'reset') body.token = resetToken;
+      const res = await fetch(m.url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Ошибка');
+      if (mode === 'forgot') {
+        $('ok').textContent = data.message;
+        return;
+      }
       location.href = '/app';
     } catch (ex) {
-      err.textContent = ex.message;
-      btn.disabled = false;
+      $('err').textContent = ex.message;
+    } finally {
+      $('btn').disabled = false;
     }
   });
 </script>

@@ -83,7 +83,11 @@ export class License {
     now = () => Date.now(),
     secret = machineSecret(),
     instanceName = os.hostname(),
+    // Web version: Pro granted by a subscription webhook instead of a pasted key.
+    // Function returning { active, expiresAt?, manageUrl?, status? } or null.
+    entitlement = null,
   } = {}) {
+    this.entitlement = entitlement;
     this.file = file;
     this.backupFile = backupFile;
     this.cfg = { ...LICENSE_DEFAULTS, ...Object.fromEntries(Object.entries(config).filter(([, v]) => v != null && v !== '')) };
@@ -151,7 +155,12 @@ export class License {
     return this.state.trialStartedAt + this.cfg.trialDays * DAY;
   }
 
+  subscription() {
+    return this.entitlement ? this.entitlement() : null;
+  }
+
   hasActiveLicense() {
+    if (this.subscription()?.active) return true;
     const s = this.state;
     if (!s.key || s.licenseStatus !== 'active') return false;
     if (s.expiresAt && Date.parse(s.expiresAt) < this.clock()) return false;
@@ -184,6 +193,7 @@ export class License {
       checkoutUrl: this.cfg.checkoutUrl,
       storeConfigured: Boolean(this.cfg.storeId && this.cfg.productId),
       features: PRO_FEATURES,
+      subscription: this.subscription(),
     };
   }
 
