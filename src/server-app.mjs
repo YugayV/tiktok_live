@@ -7,9 +7,9 @@ import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { Studio } from './studio.mjs';
 
-const PUBLIC = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
+export const PUBLIC = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
 
-const MIME = {
+export const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.mjs': 'text/javascript; charset=utf-8',
@@ -21,12 +21,12 @@ const MIME = {
   '.json': 'application/json',
 };
 
-function send(res, status, body, type = 'application/json') {
+export function send(res, status, body, type = 'application/json') {
   res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store' });
   res.end(type === 'application/json' ? JSON.stringify(body) : body);
 }
 
-async function readJson(req) {
+export async function readJson(req) {
   let raw = '';
   for await (const chunk of req) {
     raw += chunk;
@@ -35,7 +35,7 @@ async function readJson(req) {
   return raw ? JSON.parse(raw) : {};
 }
 
-function buildRoutes(studio, broadcast) {
+export function buildRoutes(studio, broadcast) {
   return {
     'GET /api/state': () => studio.state(),
     'PUT /api/config': (b) => {

@@ -17,7 +17,8 @@
     "dist:linux": "electron-builder --linux",
     "cloud": "node cloud/server.mjs",
     "release:win": "electron-builder --win nsis --x64 --publish always",
-    "release": "electron-builder --publish always"
+    "release": "electron-builder --publish always",
+    "web": "node hosted/main.mjs"
   },
   "engines": {
     "node": ">=20"

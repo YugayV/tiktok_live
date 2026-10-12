@@ -2,6 +2,8 @@
 (() => {
   const params = new URLSearchParams(location.search);
   const widget = params.get('w') || 'alerts';
+  // Web version: personal overlay URLs look like /o/<token>/?w=alerts
+  const overlayToken = (/^\/o\/([\w-]+)/.exec(location.pathname) || [])[1] || '';
   const root = document.getElementById('root');
   if (params.has('preview')) document.body.classList.add('preview');
 
@@ -349,14 +351,14 @@
   };
 
   function post(path, body) {
-    fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).catch(() => {});
+    fetch(overlayToken ? `/o/${overlayToken}${path}` : path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).catch(() => {});
   }
 
   // ---------------- transport ----------------
   const w = W[widget] || W.alerts;
   let first = true;
   function connect() {
-    const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
+    const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws${overlayToken ? `?t=${encodeURIComponent(overlayToken)}` : ''}`);
     ws.onmessage = (m) => {
       const { type, payload } = JSON.parse(m.data);
       if (type === 'hello') {

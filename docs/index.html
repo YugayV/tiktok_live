@@ -120,6 +120,7 @@
       <div class="dl">
         <a class="btn big primary" id="dlMain" data-dl href="https://github.com/YugayV/tiktok_live/releases/latest/download/TikLive-Studio-Setup.exe">⬇ Скачать для Windows</a>
         <div class="meta" id="dlMeta">Windows 10/11 · 64-bit · автообновления</div>
+        <a class="btn" id="webApp" href="#" hidden>🌐 Открыть веб-версию — без установки</a>
         <div class="others">Другие версии:
           <a id="dlPortable" href="https://github.com/YugayV/tiktok_live/releases/latest/download/TikLive-Studio-Portable.exe">Windows без установки</a>
           <a id="dlMac" href="https://github.com/YugayV/tiktok_live/releases/latest/download/TikLive-Studio.dmg">macOS</a>
@@ -257,6 +258,8 @@
   // Config: checkout link of the Pro subscription (Lemon Squeezy). Empty = the button leads to the download.
   const REPO = 'YugayV/tiktok_live';
   const CHECKOUT_URL = '';
+  // Address of the hosted web version (hosted/). Empty = the "open web version" button is hidden.
+  const WEB_APP_URL = '';
   const LATEST = `https://github.com/${REPO}/releases/latest/download/`;
 
   // Main button follows the visitor's OS.
@@ -268,6 +271,7 @@
   dl.textContent = main[1];
   document.getElementById('dlMeta').textContent = os === 'mobile' ? 'Программа работает на компьютере: откройте этот сайт на ПК' : main[2];
   document.querySelectorAll('[data-dl]').forEach((a) => { if (a !== dl && a.getAttribute('href') !== '#download') a.href = dl.href; });
+  if (WEB_APP_URL) { const w = document.getElementById('webApp'); w.href = WEB_APP_URL.replace(/\/$/, '') + '/signup'; w.hidden = false; }
   if (CHECKOUT_URL) { const b = document.getElementById('buyPro'); b.href = CHECKOUT_URL; b.textContent = 'Оформить Pro'; b.target = '_blank'; }
 
   // Show the current version and file size from GitHub Releases (links work even if this fails).

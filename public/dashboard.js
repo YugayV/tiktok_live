@@ -18,9 +18,12 @@
   async function api(path, body, method = 'POST') {
     const res = await fetch(path, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
     const data = await res.json().catch(() => ({}));
+    if (res.status === 401) location.href = '/login'; // web version: session expired
     if (!res.ok) throw new Error(data.error || res.statusText);
     return data;
   }
+  // Overlay links: personal /o/<token>/ in the web version, local /overlay/ in the desktop app.
+  const overlayBase = () => location.origin + (S?.hosted?.overlayPath || '/overlay/');
   const call = (path, body, okMsg) =>
     api(path, body)
       .then((r) => (okMsg && toast(okMsg), r))
@@ -348,7 +351,7 @@
         field(g, 'target', 'Цель', 'number'),
         field(g, 'enabled', 'Включена', 'checkbox'),
       );
-      const url = `${location.origin}/overlay/?w=goals&goal=${encodeURIComponent(g.id)}`;
+      const url = `${overlayBase()}?w=goals&goal=${encodeURIComponent(g.id)}`;
       const copy = button('📋 URL оверлея', () => navigator.clipboard?.writeText(url).then(() => toast('Скопировано')));
       const del = button('✕ Удалить', () => {
         S.config.goals.splice(i, 1);
@@ -433,7 +436,7 @@
     const box = $('#overlayList');
     if (box.children.length) return;
     for (const [w, title, hint, extra] of OVERLAYS) {
-      const url = `${location.origin}/overlay/?w=${w}${extra}`;
+      const url = `${overlayBase()}?w=${w}${extra}`;
       const el = document.createElement('div');
       el.className = 'card ov';
       el.innerHTML = `<h3>${title}</h3><div class="muted">${hint}</div><div class="url"><input readonly value="${esc(url)}"><button type="button">📋</button></div>${w === 'audio' || w === 'player' ? '' : `<iframe src="${esc(url)}&preview=1&audio=0" loading="lazy"></iframe>`}`;
@@ -557,7 +560,7 @@
     }
   });
 
-  const syncAiMode = () => $('#aiOwn').classList.toggle('hidden', $('#aiMode').value !== 'own');
+  const syncAiMode = () => $('#aiOwn')?.classList.toggle('hidden', $('#aiMode').value !== 'own');
   $('#aiMode').addEventListener('change', syncAiMode);
 
   // ---------- keyboard ----------
@@ -637,8 +640,42 @@
   );
 
   // ---------- live socket ----------
+  // Web version: account bar, hide what a server cannot do on the streamer's PC.
+  function applyHosted(h) {
+    if (!h || $('#account')) return;
+    const bar = document.createElement('div');
+    bar.id = 'account';
+    bar.className = 'account';
+    bar.innerHTML = `<span>${esc(h.email)}</span>`;
+    bar.append(button('Выйти', () => api('/auth/logout', {}).finally(() => (location.href = '/login'))));
+    $('header').append(bar);
+    $('#tabs [data-tab=keyboard]')?.remove();
+    for (const el of $$('[name="obs.url"], [name="obs.password"], #obsConnect')) el.disabled = true;
+    const obsNote = document.createElement('p');
+    obsNote.className = 'muted';
+    obsNote.textContent = 'Управление OBS и клавиатурой работает в приложении для ПК. В веб-версии оверлеи добавляются в OBS по ссылкам с вкладки «Оверлеи».';
+    $('#obsConnect')?.after(obsNote);
+    $('#aiMode')?.closest('label')?.classList.add('hidden');
+    $('#aiOwn')?.remove();
+    const aiNote = document.createElement('p');
+    aiNote.className = 'muted';
+    aiNote.textContent = h.aiReady ? 'ИИ работает на сервере TikLive — ключи настраивать не нужно.' : 'ИИ на этом сервере пока не подключён.';
+    $('#aiForm h3')?.after(aiNote);
+    const rot = button('🔄 Сменить ссылки оверлеев', () => {
+      if (!confirm('Старые ссылки в OBS перестанут работать. Продолжить?')) return;
+      call('/api/overlay/rotate', {}, 'Новые ссылки созданы — обновите источники в OBS').then((r) => {
+        if (!r) return;
+        S.hosted.overlayPath = r.overlayPath;
+        $('#overlayList').replaceChildren();
+        renderOverlays();
+      });
+    });
+    $('#tab-overlays p.muted')?.after(rot);
+  }
+
   function hydrate(state) {
     S = state;
+    applyHosted(state.hosted);
     $('#username').value = state.config.settings.username || '';
     renderStatus(state.status);
     renderStats({ ...state.stats, queue: state.queue });
@@ -688,7 +725,8 @@
           return;
       }
     };
-    ws.onclose = () => {
+    ws.onclose = (e) => {
+      if (S?.hosted && e.code === 1006) fetch('/api/license').then((r) => r.status === 401 && (location.href = '/login')).catch(() => {});
       renderStatus({ state: 'error', error: 'нет связи с сервером' });
       setTimeout(connect, 2000);
     };

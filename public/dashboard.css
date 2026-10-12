@@ -104,3 +104,6 @@ table.plans td:first-child, table.plans th:first-child { text-align: left; }
 .update-banner { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 7px 20px; background: #12384a; font-weight: 600; flex-wrap: wrap; }
 .update-banner .bar { width: 160px; height: 8px; border-radius: 4px; background: rgba(255,255,255,.15); overflow: hidden; }
 .update-banner .bar i { display: block; height: 100%; background: var(--accent2); }
+
+.account { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+.account button { padding: 4px 10px; font-size: 13px; }

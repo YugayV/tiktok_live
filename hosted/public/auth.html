@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Вход — TikLive Studio</title>
+<style>
+  :root { --bg:#0b0c11; --panel:#161925; --panel2:#1f2230; --line:#2a2e3f; --text:#eef0f7; --muted:#9196ad; --pink:#fe2c55; --cyan:#25f4ee; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: radial-gradient(closest-side at 30% 20%, rgba(254,44,85,.18), transparent 70%), radial-gradient(closest-side at 80% 70%, rgba(37,244,238,.12), transparent 70%), var(--bg); color: var(--text); font: 16px/1.5 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif; padding: 20px; }
+  .box { width: 100%; max-width: 400px; background: var(--panel); border: 1px solid var(--line); border-radius: 20px; padding: 30px; box-shadow: 0 30px 80px rgba(0,0,0,.5); }
+  .logo { font-weight: 800; font-size: 22px; margin-bottom: 4px; } .logo b { color: var(--cyan); } .logo span { color: var(--pink); }
+  .sub { color: var(--muted); margin: 0 0 22px; font-size: 15px; }
+  .tabs { display: grid; grid-template-columns: 1fr 1fr; background: var(--panel2); border-radius: 12px; padding: 4px; margin-bottom: 20px; }
+  .tabs a { text-align: center; padding: 8px; border-radius: 9px; color: var(--muted); text-decoration: none; font-weight: 600; }
+  .tabs a.on { background: var(--panel); color: var(--text); }
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 14px; }
+  input { width: 100%; margin-top: 5px; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel2); color: var(--text); font: inherit; }
+  input:focus { outline: 2px solid var(--cyan); outline-offset: -1px; }
+  button { width: 100%; padding: 13px; border: none; border-radius: 12px; background: linear-gradient(135deg, var(--pink), #ff5f7e); color: #fff; font: inherit; font-weight: 700; cursor: pointer; margin-top: 6px; }
+  button:disabled { opacity: .6; cursor: wait; }
+  .err { color: #ff6b81; font-size: 14px; min-height: 20px; margin-top: 10px; }
+  .note { color: var(--muted); font-size: 13px; margin-top: 16px; text-align: center; }
+  .note a { color: var(--cyan); }
+</style>
+</head>
+<body>
+<main class="box">
+  <div class="logo"><span>◆</span> TikLive <b>Studio</b></div>
+  <p class="sub" id="sub">Интерактивные эфиры TikTok LIVE — прямо в браузере.</p>
+  <div class="tabs"><a href="/login" id="tLogin">Вход</a><a href="/signup" id="tSignup">Регистрация</a></div>
+  <form id="form">
+    <label>E-mail<input name="email" type="email" autocomplete="email" required></label>
+    <label>Пароль<input name="password" type="password" minlength="8" required></label>
+    <button id="btn">Войти</button>
+    <div class="err" id="err" role="alert"></div>
+  </form>
+  <p class="note" id="note">Без логина и пароля от TikTok — только ник стримера.<br>Первые 7 дней Pro бесплатно, без карты.</p>
+</main>
+<script>
+  const signup = location.pathname === '/signup';
+  document.getElementById(signup ? 'tSignup' : 'tLogin').classList.add('on');
+  const btn = document.getElementById('btn');
+  btn.textContent = signup ? 'Создать аккаунт' : 'Войти';
+  document.querySelector('[name=password]').autocomplete = signup ? 'new-password' : 'current-password';
+  if (signup) document.querySelector('[name=password]').placeholder = 'не короче 8 символов';
+  document.getElementById('form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const err = document.getElementById('err');
+    err.textContent = '';
+    btn.disabled = true;
+    try {
+      const res = await fetch(signup ? '/auth/signup' : '/auth/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(Object.fromEntries(new FormData(e.target))),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Ошибка');
+      location.href = '/app';
+    } catch (ex) {
+      err.textContent = ex.message;
+      btn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>
