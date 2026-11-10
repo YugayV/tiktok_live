@@ -118,3 +118,13 @@ table.plans td:first-child, table.plans th:first-child { text-align: left; }
 .filebtn:hover { border-color: var(--accent2); }
 .field { display: flex; flex-direction: column; font-size: 13px; color: var(--muted); margin-bottom: 10px; }
 .entrance-list .r button { margin-left: 6px; }
+
+.fx-list { display: grid; gap: 8px; margin: 8px 0 10px; }
+.fx-row { display: grid; grid-template-columns: 110px minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr) auto; gap: 8px; align-items: end; padding: 10px; border: 1px solid var(--line); border-radius: 12px; }
+.fx-row:has([data-k=gift]) { grid-template-columns: minmax(0,1fr) minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.2fr) auto; }
+.fx-row select, .fx-row input { min-width: 0; width: 100%; }
+.fx-row label { margin: 0; }
+.fx-row .inline.nomargin { margin-top: 0; align-items: center; }
+.fx-row .filebtn { padding: 8px 10px; }
+.fx-btns { display: flex; gap: 6px; }
+@media (max-width: 900px) { .fx-row, .fx-row:has([data-k=gift]) { grid-template-columns: 1fr 1fr; } }

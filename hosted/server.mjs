@@ -349,7 +349,7 @@ export function startHostedServer({
       // --- shared static assets (dashboard.js/css, overlay.js/css, icons) --------
       if (req.method === 'GET') {
         if (path.startsWith('/auth-assets/')) return staticFrom(HOSTED_PUBLIC, res, path.slice('/auth-assets'.length));
-        if (path === '/dashboard.js' || path === '/dashboard.css' || path.startsWith('/overlay/')) return staticFrom(PUBLIC, res, path);
+        if (path === '/dashboard.js' || path === '/dashboard.css' || path.startsWith('/overlay/') || path.startsWith('/sounds/')) return staticFrom(PUBLIC, res, path);
       }
       send(res, 404, 'Not found', 'text/plain');
     } catch (err) {

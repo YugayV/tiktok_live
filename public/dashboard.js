@@ -3,6 +3,12 @@
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  // Gift sounds/effects (must match src/gift-fx.mjs).
+  const FX_SOUNDS = [['', '— без звука —'], ['coin', 'Монетка'], ['pop', 'Поп'], ['heart', 'Сердечко'], ['chime', 'Колокольчик'], ['sparkle', 'Искры'], ['levelup', 'Новый уровень'], ['fanfare', 'Фанфары'], ['tada', 'Та-дам!'], ['whoosh', 'Вжух'], ['drumroll', 'Барабанная дробь'], ['horn', 'Горн']];
+  const FX_EFFECTS = [['none', 'Без эффекта'], ['confetti', '🎊 Конфетти'], ['hearts', '💖 Сердечки'], ['diamonds', '💎 Дождь алмазов'], ['stars', '✨ Звёзды'], ['fireworks', '🎆 Фейерверк'], ['giftRain', '🎁 Дождь из подарка']];
+  const FX_ANIMS = [['pop', 'Выпрыгивает'], ['slide', 'Выезжает сбоку'], ['bounce', 'Падает с отскоком'], ['zoom', 'Влетает из глубины'], ['flip', 'Переворот'], ['shake', 'Тряска экрана']];
+  const FX_EFFECTS_AUTO = [['auto', 'Как в «Подарках»'], ...FX_EFFECTS];
+  const FX_ANIMS_AUTO = [['auto', 'Как в «Подарках»'], ...FX_ANIMS];
   const fmt = (n) => Number(n || 0).toLocaleString('ru-RU', { maximumFractionDigits: 1 });
   const uid = (p) => `${p}-${Math.random().toString(36).slice(2, 8)}`;
   let S = null; // last full state from server
@@ -76,6 +82,7 @@
       $$('.tab').forEach((t) => t.classList.toggle('active', t.id === `tab-${b.dataset.tab}`));
       if (b.dataset.tab === 'overlays') renderOverlays();
       if (b.dataset.tab === 'home') drawChart();
+      if (b.dataset.tab === 'gifts') loadSeenGifts();
     }),
   );
   window.addEventListener('beforeunload', (e) => {
@@ -197,7 +204,7 @@
     ['member', '👋 Вход зрителя'], ['subscribe', '⭐ Платная подписка'], ['question', '❓ Вопрос'], ['goal', '🎯 Цель достигнута'], ['any', '✳ Любое событие'],
   ];
   const ACTIONS = {
-    alert: ['🔔 Алерт на экране', [['text', 'Текст', 'grow'], ['duration', 'Сек', 'number'], ['style', 'Стиль', 'select', [['default', 'Обычный'], ['gold', 'Золото'], ['pink', 'Розовый'], ['blue', 'Голубой'], ['red', 'Красный'], ['epic', 'Эпик']]], ['image', 'Картинка/GIF URL'], ['sound', 'Звук URL'], ['showGiftImage', 'Картинка подарка', 'checkbox'], ['confetti', 'Конфетти', 'checkbox']]],
+    alert: ['🔔 Алерт на экране', [['text', 'Текст', 'grow'], ['duration', 'Сек', 'number'], ['style', 'Стиль', 'select', [['default', 'Обычный'], ['gold', 'Золото'], ['pink', 'Розовый'], ['blue', 'Голубой'], ['red', 'Красный'], ['epic', 'Эпик']]], ['image', 'Картинка/GIF URL'], ['sound', 'Звук: coin, fanfare… или URL'], ['effect', 'Эффект', 'select', FX_EFFECTS_AUTO], ['animation', 'Анимация', 'select', FX_ANIMS_AUTO], ['showGiftImage', 'Картинка подарка', 'checkbox'], ['confetti', 'Конфетти', 'checkbox']]],
     tts: ['🗣 Озвучить (TTS)', [['text', 'Текст', 'grow']]],
     sound: ['🔊 Звук', [['url', 'URL (mp3/wav)', 'grow'], ['volume', 'Громкость 0–1', 'number']]],
     goal: ['🎯 Изменить цель', [['goalId', 'Цель', 'goal'], ['amount', 'Сколько (число или diamonds)']]],
@@ -479,6 +486,7 @@
     renderChatToggle();
     renderEngine();
     renderEntrances();
+    renderGiftFx();
   }
   $('#settingsForm').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -719,7 +727,8 @@
   }
   function soundInApp(url, volume = 1, output) {
     if (!inApp(output) || !url) return;
-    const a = new Audio(url);
+    // Uploaded files live next to the overlays (desktop /overlay/media/, web /o/<token>/media/).
+    const a = new Audio(url.startsWith('media/') ? overlayBase() + url : url);
     a.volume = Math.max(0, Math.min(1, volume));
     a.play().catch(() => {});
   }
@@ -764,6 +773,88 @@
     const src = `${overlayBase()}?w=alerts&preview=1&audio=0`;
     if ($('#alertPreview').getAttribute('src') !== src) $('#alertPreview').src = src;
   }
+
+  // ---------- gift sounds & animations ----------
+  const gfx = () => S.config.settings.giftFx;
+  const opt = (list, v) => list.map(([k, l]) => `<option value="${esc(k)}"${k === v ? ' selected' : ''}>${esc(l)}</option>`).join('');
+  // Sound picker: built-ins plus the current uploaded file / link, if any.
+  function soundOptions(v) {
+    const list = [...FX_SOUNDS];
+    if (v && !list.some(([k]) => k === v)) list.push([v, v.startsWith('media/') ? '📁 свой файл' : '🔗 ссылка']);
+    return opt(list, v || '');
+  }
+  function previewSound(v) {
+    if (!v) return;
+    const url = FX_SOUNDS.some(([k]) => k === v) ? `/sounds/${v}.mp3` : v.startsWith('media/') ? overlayBase() + v : v;
+    const a = new Audio(url);
+    a.volume = gfx().volume ?? 0.8;
+    a.play().catch(() => {});
+  }
+  function fxRow(item, { tier }) {
+    const row = document.createElement('div');
+    row.className = 'fx-row';
+    row.innerHTML = `${tier ? `<label>от 💎<input type="number" min="1" data-k="min" value="${Number(item.min) || 1}"></label>` : `<label>Подарок<input data-k="gift" list="giftNames" value="${esc(item.gift || '')}" placeholder="Rose"></label>`}
+      <label>Звук<span class="inline nomargin"><select data-k="sound">${soundOptions(item.sound)}</select><button type="button" class="play" title="Послушать">▶</button><label class="filebtn" title="Свой звук MP3/WAV">📁<input type="file" accept="audio/mpeg,audio/wav,audio/ogg" hidden></label></span></label>
+      <label>Эффект<select data-k="effect">${opt(tier ? FX_EFFECTS : [['', 'Как у уровня'], ...FX_EFFECTS], item.effect || '')}</select></label>
+      <label>Анимация<select data-k="animation">${opt(tier ? FX_ANIMS : [['', 'Как у уровня'], ...FX_ANIMS], item.animation || '')}</select></label>
+      ${tier ? '' : `<label>Видео (необязательно)<span class="inline nomargin"><input data-k="video" value="${esc(item.video || '')}" placeholder="media/… или https://…"><label class="filebtn" title="Видео MP4/WebM или GIF">📁<input type="file" data-video accept="video/mp4,video/webm,image/gif" hidden></label></span></label>`}
+      <span class="fx-btns"><button type="button" class="test" title="Проверить на оверлее">🎁 Тест</button><button type="button" class="x danger" title="Удалить">✕</button></span>`;
+    for (const el of row.querySelectorAll('[data-k]'))
+      el.addEventListener('change', () => (item[el.dataset.k] = el.type === 'number' ? Number(el.value) : el.value.trim()));
+    row.querySelector('.play').onclick = () => previewSound(item.sound);
+    row.querySelector('input[type=file]:not([data-video])').onchange = async (e) => {
+      const f = e.target.files[0];
+      if (!f) return;
+      const url = await uploadFile(f, $('#fxStatus')).catch(() => '');
+      if (url) {
+        item.sound = url;
+        row.querySelector('[data-k=sound]').innerHTML = soundOptions(url);
+      }
+    };
+    const vid = row.querySelector('input[data-video]');
+    if (vid)
+      vid.onchange = async (e) => {
+        const f = e.target.files[0];
+        if (!f) return;
+        const url = await uploadFile(f, $('#fxStatus')).catch(() => '');
+        if (url) row.querySelector('[data-k=video]').value = item.video = url;
+      };
+    row.querySelector('.test').onclick = () =>
+      saveConfig({ settings: S.config.settings }, '').then(() => call('/api/gifts/test', tier ? { diamonds: item.min } : { giftName: item.gift }));
+    row.querySelector('.x').onclick = () => {
+      const list = tier ? gfx().tiers : gfx().gifts;
+      list.splice(list.indexOf(item), 1);
+      renderGiftFx();
+    };
+    return row;
+  }
+  function renderGiftFx() {
+    if (!S?.config?.settings?.giftFx) return;
+    $('#fxEnabled').checked = gfx().enabled !== false;
+    $('#fxVolume').value = gfx().volume ?? 0.8;
+    gfx().tiers.sort((a, b) => (a.min || 0) - (b.min || 0));
+    $('#fxTiers').replaceChildren(...gfx().tiers.map((t) => fxRow(t, { tier: true })));
+    $('#fxGifts').replaceChildren(...gfx().gifts.map((g) => fxRow(g, { tier: false })));
+    if (!gfx().gifts.length) $('#fxGifts').innerHTML = '<p class="muted">Пока нет. Например: «Rose» — звук «Сердечко» и сердечки, «Lion» — своё видео.</p>';
+  }
+  async function loadSeenGifts() {
+    const r = await api('/api/gifts/seen', {}).catch(() => null);
+    const names = new Set(['Rose', 'TikTok', 'Finger Heart', 'Heart Me', 'Doughnut', 'Perfume', 'Hand Hearts', 'Corgi', 'Money Gun', 'Galaxy', 'Lion', 'Universe', ...(r?.gifts || []).map((g) => g.name)]);
+    $('#giftNames').innerHTML = [...names].map((n) => `<option value="${esc(n)}">`).join('');
+  }
+  $('#fxEnabled').onchange = (e) => (gfx().enabled = e.target.checked);
+  $('#fxVolume').onchange = (e) => (gfx().volume = Math.max(0, Math.min(1, Number(e.target.value) || 0)));
+  $('#fxAddTier').onclick = () => {
+    const max = Math.max(0, ...gfx().tiers.map((t) => t.min || 0));
+    gfx().tiers.push({ min: max ? max * 5 : 1, sound: 'coin', effect: 'none', animation: 'pop' });
+    renderGiftFx();
+  };
+  $('#fxAddGift').onclick = () => {
+    gfx().gifts.push({ gift: '', sound: '', effect: '', animation: '', video: '' });
+    renderGiftFx();
+    loadSeenGifts();
+  };
+  $('#fxSave').onclick = () => saveConfig({ settings: S.config.settings }, 'Звуки и анимации подарков сохранены');
 
   // ---------- entrance videos ----------
   const ent = () => S.config.settings.entrances;
@@ -999,7 +1090,7 @@
         case 'log': return addLog(payload);
         case 'stats': return renderStats(payload);
         case 'alert':
-          soundInApp(payload.sound, 1, payload.output);
+          soundInApp(payload.sound, payload.volume ?? 1, payload.output);
           return renderQueue({ ...S.queue, current: payload });
         case 'tts': return speakInApp(payload);
         case 'sound': return soundInApp(payload.url, payload.volume, payload.output);

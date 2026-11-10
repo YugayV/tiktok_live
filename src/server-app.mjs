@@ -68,6 +68,9 @@ export function buildRoutes(studio, broadcast) {
     'POST /api/tts': (b) => (studio.speak(String(b.text || '')), { ok: true }),
     'POST /api/tts/test': () => studio.testVoice(),
     'POST /api/media/list': () => ({ files: studio.media.list() }),
+    'POST /api/gifts/seen': () => ({ gifts: [...studio.seenGifts.values()] }),
+    // "Check" buttons on the Подарки tab: a fake gift of the given value or name.
+    'POST /api/gifts/test': (b) => studio.simulate('gift', { giftName: b.giftName || undefined, diamonds: Number(b.diamonds) || undefined, count: 1 }),
     'POST /api/media/upload': (b) => studio.media.save(b.name, b.data),
     'POST /api/media/delete': (b) => (studio.media.remove(b.file), { ok: true }),
     // Plays the entrance exactly as a real join would (ignores "once per session").

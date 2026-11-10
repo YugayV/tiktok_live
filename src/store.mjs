@@ -8,6 +8,7 @@ import { DEFAULT_SONGS } from './songs.mjs';
 import { DEFAULT_KEYBOARD } from './keyboard.mjs';
 import { DEFAULT_CHAT_TTS } from './chat-filter.mjs';
 import { DEFAULT_ENTRANCES } from './entrances.mjs';
+import { DEFAULT_GIFT_FX } from './gift-fx.mjs';
 
 export const DEFAULT_CONFIG = {
   settings: {
@@ -26,6 +27,8 @@ export const DEFAULT_CONFIG = {
     },
     // Personal entrance videos: shown in the alerts overlay when a viewer joins the LIVE.
     entrances: DEFAULT_ENTRANCES,
+    // Sounds and animations for gifts (by value tier and per gift).
+    giftFx: DEFAULT_GIFT_FX,
     bannedWords: '',
     pointRates: DEFAULT_POINT_RATES,
     alertMergeWindow: true,
@@ -60,7 +63,7 @@ export const DEFAULT_CONFIG = {
       priority: 10,
       trigger: { type: 'gift', minDiamonds: 100 },
       actions: [
-        { type: 'alert', text: '🚀 МЕГА ДОНАТ! {nickname} — {diamonds}💎', duration: 8, style: 'epic', confetti: true },
+        { type: 'alert', text: '🚀 МЕГА ДОНАТ! {nickname} — {diamonds}💎', duration: 8, style: 'epic', showGiftImage: true },
         { type: 'tts', text: '{nickname}, огромное спасибо за {giftName}!' },
       ],
       stopOnMatch: true,

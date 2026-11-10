@@ -62,29 +62,113 @@
     } else done();
   }
 
-  // ---------------- confetti ----------------
+  // ---------------- effects: confetti, hearts, diamonds, stars, fireworks, gift rain ----------------
   const cv = document.getElementById('confetti');
   const cx = cv.getContext('2d');
   let parts = [];
-  function confetti() {
-    cv.width = innerWidth;
-    cv.height = innerHeight;
-    const colors = ['#fe2c55', '#25f4ee', '#ffc93c', '#b86bff', '#06d6a0'];
-    for (let i = 0; i < 180; i++)
-      parts.push({ x: innerWidth / 2, y: innerHeight / 2, vx: (Math.random() - 0.5) * 18, vy: Math.random() * -18 - 4, r: Math.random() * 6 + 3, c: colors[i % colors.length], life: 120 + Math.random() * 60 });
-    if (parts.length === 180) requestAnimationFrame(drawConfetti);
-  }
-  function drawConfetti() {
-    cx.clearRect(0, 0, cv.width, cv.height);
-    parts = parts.filter((p) => p.life-- > 0);
-    for (const p of parts) {
-      p.vy += 0.45;
-      p.x += p.vx;
-      p.y += p.vy;
-      cx.fillStyle = p.c;
-      cx.fillRect(p.x, p.y, p.r, p.r * 1.6);
+  let running = false;
+  const COLORS = ['#fe2c55', '#25f4ee', '#ffc93c', '#b86bff', '#06d6a0'];
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const images = new Map();
+  function loadImg(src) {
+    if (!src) return null;
+    if (!images.has(src)) {
+      const im = new Image();
+      im.src = src;
+      images.set(src, im);
     }
-    if (parts.length) requestAnimationFrame(drawConfetti);
+    return images.get(src);
+  }
+  function add(p) {
+    parts.push({ life: 150, max: p.life || 150, rot: 0, vr: 0, g: 0.45, drag: 1, alpha: 1, ...p });
+    if (!running) {
+      running = true;
+      requestAnimationFrame(draw);
+    }
+  }
+  function confetti() {
+    for (let i = 0; i < 180; i++)
+      add({ kind: 'rect', x: innerWidth / 2, y: innerHeight / 2, vx: rnd(-9, 9), vy: rnd(-22, -4), r: rnd(3, 9), c: COLORS[i % COLORS.length], life: rnd(120, 180), vr: rnd(-0.3, 0.3) });
+  }
+  function emojiRain(chars, { up = false, n = 40 } = {}) {
+    for (let i = 0; i < n; i++)
+      add({
+        kind: 'text', t: chars[i % chars.length], x: rnd(0, innerWidth), y: up ? innerHeight + rnd(20, 300) : rnd(-400, -30),
+        vx: rnd(-1, 1), vy: up ? rnd(-7, -3) : rnd(3, 7), g: 0, size: rnd(26, 54), life: rnd(160, 230), sway: rnd(0, 6), vr: up ? 0 : rnd(-0.05, 0.05),
+      });
+  }
+  function stars() {
+    for (let i = 0; i < 70; i++) {
+      const a = rnd(0, Math.PI * 2), v = rnd(4, 14);
+      add({ kind: 'text', t: i % 3 ? '✨' : '⭐', x: innerWidth / 2, y: innerHeight / 2, vx: Math.cos(a) * v, vy: Math.sin(a) * v, g: 0.08, drag: 0.97, size: rnd(18, 40), life: rnd(70, 110) });
+    }
+  }
+  function fireworks() {
+    for (let k = 0; k < 6; k++)
+      setTimeout(() => {
+        const x = rnd(innerWidth * 0.15, innerWidth * 0.85), y = rnd(innerHeight * 0.12, innerHeight * 0.45), c = COLORS[k % COLORS.length];
+        for (let i = 0; i < 90; i++) {
+          const a = (i / 90) * Math.PI * 2, v = rnd(2, 9);
+          add({ kind: 'spark', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, g: 0.07, drag: 0.98, r: rnd(2, 4), c: i % 4 ? c : '#fff', life: rnd(60, 100) });
+        }
+      }, k * 420);
+  }
+  function giftRain(src) {
+    const im = loadImg(src);
+    for (let i = 0; i < 36; i++)
+      add(im ? { kind: 'img', im, x: rnd(0, innerWidth), y: rnd(-600, -40), vx: rnd(-1, 1), vy: rnd(3, 8), g: 0.03, size: rnd(48, 96), life: 260, vr: rnd(-0.04, 0.04) }
+        : { kind: 'text', t: '🎁', x: rnd(0, innerWidth), y: rnd(-600, -40), vx: rnd(-1, 1), vy: rnd(3, 8), g: 0.03, size: rnd(40, 70), life: 260, vr: rnd(-0.04, 0.04) });
+  }
+  function effect(name, a = {}) {
+    if (name === 'confetti') confetti();
+    else if (name === 'hearts') emojiRain(['❤️', '💖', '💕', '💗'], { up: true });
+    else if (name === 'diamonds') emojiRain(['💎']);
+    else if (name === 'stars') stars();
+    else if (name === 'fireworks') fireworks();
+    else if (name === 'giftRain') giftRain(a.giftImage || a.image);
+  }
+  function draw() {
+    if (cv.width !== innerWidth || cv.height !== innerHeight) {
+      cv.width = innerWidth;
+      cv.height = innerHeight;
+    }
+    cx.clearRect(0, 0, cv.width, cv.height);
+    parts = parts.filter((p) => p.life-- > 0 && p.y < innerHeight + 200 && p.y > -800);
+    for (const p of parts) {
+      p.vy += p.g;
+      p.vx *= p.drag;
+      p.vy *= p.drag;
+      p.x += p.vx + (p.sway ? Math.sin(p.life / 12) * p.sway * 0.15 : 0);
+      p.y += p.vy;
+      p.rot += p.vr;
+      cx.globalAlpha = Math.min(1, p.life / 30);
+      cx.save();
+      cx.translate(p.x, p.y);
+      cx.rotate(p.rot);
+      if (p.kind === 'rect') {
+        cx.fillStyle = p.c;
+        cx.fillRect(-p.r / 2, -p.r, p.r, p.r * 1.6);
+      } else if (p.kind === 'spark') {
+        cx.fillStyle = p.c;
+        cx.beginPath();
+        cx.arc(0, 0, p.r, 0, Math.PI * 2);
+        cx.fill();
+      } else if (p.kind === 'text') {
+        cx.font = `${p.size}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;
+        cx.textAlign = 'center';
+        cx.textBaseline = 'middle';
+        cx.fillText(p.t, 0, 0);
+      } else if (p.kind === 'img' && p.im.complete && p.im.naturalWidth) {
+        cx.drawImage(p.im, -p.size / 2, -p.size / 2, p.size, p.size);
+      }
+      cx.restore();
+    }
+    cx.globalAlpha = 1;
+    if (parts.length) requestAnimationFrame(draw);
+    else {
+      running = false;
+      cx.clearRect(0, 0, cv.width, cv.height);
+    }
   }
 
   // ---------------- widgets ----------------
@@ -97,7 +181,7 @@
     },
     alert(a) {
       const el = document.createElement('div');
-      el.className = `alert ${a.style || ''}`;
+      el.className = `alert ${a.style || ''} ${a.animation ? `anim-${a.animation}` : ''}`;
       el.innerHTML = `${img(a.avatar, 'avatar')}<div class="txt shadow">${esc(a.text)}${a.count > 1 ? `<span class="cnt">×${a.count}</span>` : ''}</div>${img(a.image, 'gift')}`;
       // Entrance video (or any alert with media): above the text, ends with the alert.
       if (a.video) {
@@ -121,8 +205,9 @@
         el.prepend(m);
       }
       this.stage.replaceChildren(el);
-      playSound(a.sound, 1, a.output);
-      if (a.confetti) confetti();
+      playSound(a.sound, a.volume ?? 1, a.output);
+      effect(a.effect || (a.confetti ? 'confetti' : ''), a);
+      if (a.animation === 'shake') document.body.classList.add('shake-screen'), setTimeout(() => document.body.classList.remove('shake-screen'), 700);
       const ms = (a.duration || 5) * 1000;
       setTimeout(() => el.classList.add('out'), Math.max(300, ms - 400));
       setTimeout(() => el.remove(), ms);

@@ -13,8 +13,11 @@ export const MEDIA_TYPES = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
   '.webp': 'image/webp',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.ogg': 'audio/ogg',
 };
-const NAME = /^[a-f0-9]{16}\.(mp4|webm|gif|png|jpe?g|webp)$/;
+const NAME = /^[a-f0-9]{16}\.(mp4|webm|gif|png|jpe?g|webp|mp3|wav|ogg)$/;
 const MB = 1024 * 1024;
 
 export class MediaStore {
@@ -39,7 +42,7 @@ export class MediaStore {
   save(originalName, data) {
     if (!this.dir) throw new Error('Хранилище файлов недоступно');
     const ext = extname(String(originalName || '')).toLowerCase();
-    if (!MEDIA_TYPES[ext]) throw new Error('Поддерживаются видео MP4/WebM и картинки GIF/PNG/JPG/WebP');
+    if (!MEDIA_TYPES[ext]) throw new Error('Поддерживаются видео MP4/WebM, картинки GIF/PNG/JPG/WebP и звуки MP3/WAV/OGG');
     const buf = Buffer.from(String(data || ''), 'base64');
     if (!buf.length) throw new Error('Пустой файл');
     if (buf.length > this.maxFile) throw new Error(`Файл больше ${Math.round(this.maxFile / MB)} МБ — сожмите видео или обрежьте его`);

@@ -23,7 +23,9 @@ export function fakeEvent(type, opts = {}) {
   const user = fakeUser(opts.nickname);
   switch (type) {
     case 'gift': {
-      const g = opts.giftName ? GIFTS.find((x) => x.name === opts.giftName) || { name: opts.giftName, diamonds: 1, type: 0 } : pick(GIFTS);
+      let g = opts.giftName ? GIFTS.find((x) => x.name === opts.giftName) || { name: opts.giftName, diamonds: 1, type: 0 } : pick(GIFTS);
+      // A specific value (tier checks): the closest known gift, priced exactly.
+      if (opts.diamonds && !opts.giftName) g = { ...GIFTS.reduce((a, x) => (Math.abs(x.diamonds - opts.diamonds) < Math.abs(a.diamonds - opts.diamonds) ? x : a)), diamonds: opts.diamonds, type: 0 };
       return normalize('gift', {
         user,
         giftId: g.name,

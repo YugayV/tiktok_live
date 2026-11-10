@@ -20,7 +20,8 @@ import { KeyController, createOsDriver } from './keyboard.mjs';
 import { License, PRO_FEATURES } from './license.mjs';
 import { ChatReader } from './chat-filter.mjs';
 import { CloudTTS } from './cloud-tts.mjs';
-import { Entrances } from './entrances.mjs';
+import { Entrances, safeMediaUrl } from './entrances.mjs';
+import { giftFx, soundUrl } from './gift-fx.mjs';
 import { MediaStore } from './media.mjs';
 
 // Store/product ids and checkout link of the subscription live in package.json → "tiklive".
@@ -88,6 +89,7 @@ export class Studio {
     this.cloudTts = cloudTts || new CloudTTS({ fetchImpl });
     this.cloudFailedAt = 0;
     this.entrances = new Entrances();
+    this.seenGifts = new Map();
     this.media = new MediaStore({ dir: dataDir && join(dataDir, 'media'), ...mediaLimits });
     this.feed = [];
     this.log = [];
@@ -126,6 +128,17 @@ export class Studio {
       if (s.tts.engine === 'neural') s.tts.engine = 'system';
       delete s.tts.neuralVoice;
       done.push('cloud-tts');
+      this.config.save();
+    }
+    if (!done.includes('gift-fx')) {
+      // Effects now come from the Подарки tab by value; the old fixed confetti would hide them.
+      const big = this.config.data.rules.find((x) => x.id === 'r-gift-big');
+      const a = big?.actions?.find((x) => x.type === 'alert');
+      if (a?.confetti && !a.effect) {
+        delete a.confetti;
+        a.showGiftImage = true;
+      }
+      done.push('gift-fx');
       this.config.save();
     }
     if (!done.includes('chat-tts')) {
@@ -212,6 +225,10 @@ export class Studio {
       this.config.save();
     }
 
+    if (ev.type === 'gift' && ev.giftName && !this.seenGifts.has(ev.giftName)) {
+      this.seenGifts.set(ev.giftName, { name: ev.giftName, image: ev.giftImage || '', diamonds: ev.diamonds || 0 });
+      if (this.seenGifts.size > 300) this.seenGifts.delete(this.seenGifts.keys().next().value);
+    }
     if (ev.type === 'member') {
       const entrance = this.entrances.check(ev, this.cfg.settings.entrances);
       if (entrance) {
@@ -357,20 +374,27 @@ export class Studio {
     if (feature && !this.allowed(feature)) return;
     try {
       switch (action.type) {
-        case 'alert':
+        case 'alert': {
+          // Gifts get a sound and an animation from the "Подарки" tab unless the rule sets its own.
+          const fx = giftFx(ev, this.cfg.settings.giftFx) || {};
           this.queue.push({
             id: `${ev.id}-${rule.id}`,
             text: this.censor(render(action.text, ev)),
             image: action.showGiftImage ? ev.giftImage : action.image || '',
+            giftImage: ev.giftImage || '',
             avatar: ev.user?.avatar,
-            sound: action.sound || '',
+            sound: soundUrl(action.sound) || fx.sound || '',
+            volume: fx.volume ?? 1,
+            effect: action.effect && action.effect !== 'auto' ? action.effect : action.confetti ? 'confetti' : fx.effect || '',
+            animation: action.animation && action.animation !== 'auto' ? action.animation : fx.animation || '',
+            video: safeMediaUrl(fx.video),
             style: action.style || 'default',
-            confetti: Boolean(action.confetti),
             duration: Number(action.duration) || 5,
             priority: rule.priority || 0,
             mergeKey: this.cfg.settings.alertMergeWindow && ev.type === 'gift' ? `${rule.id}|${ev.user.uniqueId}|${ev.giftId}` : '',
           });
           break;
+        }
         case 'tts':
           this.speak(render(action.text, ev));
           break;
