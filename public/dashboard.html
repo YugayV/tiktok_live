@@ -29,6 +29,7 @@
   <button data-tab="ai" data-pro="ai">🤖 ИИ</button>
   <button data-tab="keyboard" data-pro="keyboard">🎮 Клавиатура</button>
   <button data-tab="viewers">⭐ Зрители</button>
+  <button data-tab="entrances">🎬 Входы</button>
   <button data-tab="overlays">🖥 Оверлеи</button>
   <button data-tab="test">🧪 Тест</button>
   <button data-tab="settings">⚙ Настройки</button>
@@ -220,6 +221,43 @@
     </div>
   </section>
 
+  <!-- ENTRANCES -->
+  <section id="tab-entrances" class="tab">
+    <div class="grid2">
+      <div class="card">
+        <h3>🎬 Видео на вход зрителя</h3>
+        <p class="muted small-note">Когда зритель заходит на эфир, в оверлее «Алерты» проигрывается его личное видео. Зрителя приветствуют один раз за эфир. Видео — файл MP4/WebM (или GIF/картинка) либо прямая https-ссылка на файл.</p>
+        <form id="entranceAdd" class="entrance-add">
+          <input name="user" placeholder="@ник зрителя" required>
+          <input name="text" placeholder="Подпись (необязательно): {nickname} в здании!">
+          <div class="inline"><input name="video" placeholder="Видео: загрузите файл или вставьте https-ссылку"><label class="filebtn">📁 Файл<input type="file" accept="video/mp4,video/webm,image/gif,image/png,image/jpeg,image/webp" hidden></label></div>
+          <button class="save">➕ Добавить зрителя</button>
+          <div class="muted small-note" id="entranceUpload"></div>
+        </form>
+        <div id="entranceList" class="list entrance-list"></div>
+      </div>
+      <div class="card">
+        <h3>Настройки входов</h3>
+        <form id="entranceForm">
+          <label class="check"><input type="checkbox" name="enabled"> Показывать видео на вход</label>
+          <div class="field"><span>Видео для всех остальных зрителей (пусто — только для списка)</span><div class="inline"><input name="defaultVideo" placeholder="media/… или https://…"><label class="filebtn">📁 Файл<input type="file" data-target="defaultVideo" accept="video/mp4,video/webm,image/gif,image/png,image/jpeg,image/webp" hidden></label></div></div>
+          <label>Подпись по умолчанию<input name="defaultText"></label>
+          <div class="grid2 tight">
+            <label>Макс. длительность, сек<input name="duration" type="number" min="2" max="60"></label>
+            <label>Громкость (0–1)<input name="volume" type="number" step="0.1" min="0" max="1"></label>
+            <label>Повторять через, мин (0 — раз за эфир)<input name="repeatMinutes" type="number" min="0"></label>
+          </div>
+          <button class="save">💾 Сохранить</button>
+        </form>
+        <h4>Проверка</h4>
+        <form id="entranceTest" class="inline"><input name="user" placeholder="@ник из списка"><button>▶ Показать вход</button></form>
+        <p class="muted small-note">Видео появляется в оверлее «Алерты» (вкладка «Оверлеи») и в предпросмотре на «Обзоре». Звук видео идёт в OBS; в предпросмотре он выключен.</p>
+        <h4>Загруженные файлы</h4>
+        <div id="mediaList" class="list"></div>
+      </div>
+    </div>
+  </section>
+
   <!-- OVERLAYS -->
   <section id="tab-overlays" class="tab">
     <p class="muted">Добавьте в OBS / TikTok LIVE Studio источник «Браузер» с нужным адресом. Фон прозрачный. Для звука и TTS включите «Управлять аудио через OBS».</p>
@@ -282,29 +320,52 @@
       <div class="card">
         <h3>Озвучка (TTS)</h3>
         <label>Где играть озвучку и звуки<select name="tts.output"><option value="app">В программе TikLive (рекомендуется)</option><option value="obs">Только в оверлее OBS</option></select></label>
-        <label>Движок голоса<select name="tts.engine"><option value="neural">Нейро-голоса Microsoft — живое звучание (нужен интернет)</option><option value="system">Голоса Windows / браузера</option></select></label>
-        <label class="only-neural">Голос<select name="tts.neuralVoice">
-          <option value="ru-RU-SvetlanaNeural">Светлана — русский, женский</option>
-          <option value="ru-RU-DmitryNeural">Дмитрий — русский, мужской</option>
-          <option value="uk-UA-PolinaNeural">Поліна — украинский, женский</option>
-          <option value="uk-UA-OstapNeural">Остап — украинский, мужской</option>
-          <option value="kk-KZ-AigulNeural">Айгуль — казахский, женский</option>
-          <option value="kk-KZ-DauletNeural">Даулет — казахский, мужской</option>
-          <option value="uz-UZ-MadinaNeural">Madina — узбекский, женский</option>
-          <option value="en-US-AriaNeural">Aria — English (US), female</option>
-          <option value="en-US-GuyNeural">Guy — English (US), male</option>
-          <option value="en-GB-SoniaNeural">Sonia — English (UK), female</option>
-          <option value="de-DE-KatjaNeural">Katja — Deutsch, weiblich</option>
-          <option value="es-ES-ElviraNeural">Elvira — español, femenino</option>
-          <option value="tr-TR-EmelNeural">Emel — Türkçe, kadın</option>
+        <label>Движок голоса<select name="tts.engine">
+          <option value="system">Голоса Windows / браузера (бесплатно, без интернета)</option>
+          <option value="azure">Нейро-голоса Microsoft Azure — Светлана, Дмитрий… (нужен свой ключ)</option>
+          <option value="yandex">Нейро-голоса Яндекс SpeechKit — Алёна, Филипп… (нужен свой ключ)</option>
         </select></label>
-        <label class="only-neural">Высота голоса, % (−50…+50)<input name="tts.pitch" type="number" step="5" min="-50" max="50"></label>
+        <div class="only-azure">
+          <p class="muted small-note">Бесплатно до 500 000 символов в месяц. portal.azure.com → «Создать ресурс» → <b>Speech</b> (тариф Free F0) → «Ключи и конечная точка»: скопируйте <b>Ключ 1</b> и <b>Расположение/регион</b>.</p>
+          <label>Ключ Azure Speech<input name="tts.azureKey" type="password" autocomplete="off"></label>
+          <label>Регион (например westeurope)<input name="tts.azureRegion"></label>
+          <label>Голос<select name="tts.azureVoice">
+            <option value="ru-RU-SvetlanaNeural">Светлана — русский, женский</option>
+            <option value="ru-RU-DariyaNeural">Дария — русский, женский</option>
+            <option value="ru-RU-DmitryNeural">Дмитрий — русский, мужской</option>
+            <option value="uk-UA-PolinaNeural">Поліна — украинский, женский</option>
+            <option value="uk-UA-OstapNeural">Остап — украинский, мужской</option>
+            <option value="kk-KZ-AigulNeural">Айгуль — казахский, женский</option>
+            <option value="kk-KZ-DauletNeural">Даулет — казахский, мужской</option>
+            <option value="uz-UZ-MadinaNeural">Madina — узбекский, женский</option>
+            <option value="uz-UZ-SardorNeural">Sardor — узбекский, мужской</option>
+            <option value="en-US-AriaNeural">Aria — English (US), female</option>
+            <option value="en-US-GuyNeural">Guy — English (US), male</option>
+            <option value="de-DE-KatjaNeural">Katja — Deutsch, weiblich</option>
+            <option value="tr-TR-EmelNeural">Emel — Türkçe, kadın</option>
+          </select></label>
+          <label>Высота голоса, % (−50…+50)<input name="tts.pitch" type="number" step="5" min="-50" max="50"></label>
+        </div>
+        <div class="only-yandex">
+          <p class="muted small-note">console.yandex.cloud → сервисный аккаунт с ролью <b>ai.speechkit-tts.user</b> → «Создать API-ключ». Платно по тарифу Яндекса, есть стартовый грант.</p>
+          <label>API-ключ Яндекс Облака<input name="tts.yandexKey" type="password" autocomplete="off"></label>
+          <label>Голос<select name="tts.yandexVoice">
+            <option value="alena">Алёна — женский</option>
+            <option value="jane">Джейн — женский</option>
+            <option value="omazh">Омаж — женский</option>
+            <option value="filipp">Филипп — мужской</option>
+            <option value="ermil">Ермил — мужской</option>
+            <option value="zahar">Захар — мужской</option>
+            <option value="madirus">Мадирус — мужской</option>
+          </select></label>
+        </div>
+        <p class="muted small-note only-system">Мало голосов? Windows: Параметры → Время и язык → Речь → «Добавить голоса» → Русский. После установки перезапустите TikLive.</p>
         <label class="only-system">Голос<select name="tts.voice" id="ttsVoice"><option value="">Автоматически по языку</option></select></label>
         <label class="only-system">Язык<select name="tts.lang"><option>ru-RU</option><option>en-US</option><option>uk-UA</option><option>kk-KZ</option><option>de-DE</option><option>es-ES</option><option>tr-TR</option></select></label>
         <label>Скорость (0.5–2)<input name="tts.rate" type="number" step="0.1" min="0.5" max="2"></label>
         <label>Громкость (0–1)<input name="tts.volume" type="number" step="0.1" min="0" max="1"></label>
         <label>Макс. длина фразы<input name="tts.maxLength" type="number"></label>
-        <button type="button" id="ttsCheck">🔊 Проверить голос</button>
+        <button type="button" id="ttsCheck">🔊 Проверить голос</button> <span id="ttsCheckResult" class="muted"></span>
         <h3>Озвучка чата</h3>
         <label class="check"><input type="checkbox" name="tts.chat.enabled"> Озвучивать сообщения чата</label>
         <label class="check"><input type="checkbox" name="tts.chat.readNames"> Называть ник зрителя</label>

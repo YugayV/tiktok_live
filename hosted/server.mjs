@@ -8,8 +8,9 @@ import { join, extname, normalize as normPath, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { AccountStore } from './accounts.mjs';
-import { TenantManager } from './tenants.mjs';
-import { PUBLIC, MIME, send, readJson } from '../src/server-app.mjs';
+import { TenantManager, HOSTED_MEDIA } from './tenants.mjs';
+import { PUBLIC, MIME, send, readJson, bodyLimit } from '../src/server-app.mjs';
+import { serveMedia } from '../src/media.mjs';
 import { verifySignature, applyWebhook } from './billing.mjs';
 import { createMailer, resetEmail, verifyEmail } from './mailer.mjs';
 import { startFlow, finishFlow, sealFlow, openFlow } from './google.mjs';
@@ -132,7 +133,7 @@ export function startHostedServer({
     const handler = routes[`${req.method} ${path}`];
     if (!handler) return send(res, 404, { error: 'Not found' });
     try {
-      const body = req.method === 'GET' ? {} : await readJson(req);
+      const body = req.method === 'GET' ? {} : await readJson(req, bodyLimit(path, HOSTED_MEDIA.maxFileMB));
       const out = await handler(body);
       if (out && out.__raw !== undefined) return send(res, 200, out.__raw, out.type);
       send(res, 200, out ?? { ok: true });
@@ -335,6 +336,11 @@ export function startHostedServer({
         if (!userId) return send(res, 404, 'Ссылка на оверлей недействительна', 'text/plain; charset=utf-8');
         const rest = m[2] || '/';
         if (rest === '/') return file(res, join(PUBLIC, 'overlay', 'index.html'));
+        const media = /^\/media\/([\w.]+)$/.exec(rest);
+        if (media && req.method === 'GET') {
+          const p = tenants.get(userId).studio.media.path(media[1]);
+          return p ? serveMedia(req, res, p) : send(res, 404, 'Not found', 'text/plain');
+        }
         // The YouTube player overlay reports track end / title.
         if (rest === '/api/songs/next' || rest === '/api/songs/title') return handleApi(req, res, tenants.get(userId).routes, rest);
         return send(res, 404, 'Not found', 'text/plain');

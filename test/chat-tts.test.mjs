@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ChatReader, cleanForSpeech, DEFAULT_CHAT_TTS } from '../src/chat-filter.mjs';
-import { escapeSsml } from '../src/neural-tts.mjs';
+import { escapeSsml } from '../src/cloud-tts.mjs';
 import { Studio } from '../src/studio.mjs';
 import { normalize } from '../src/normalize.mjs';
 
@@ -50,15 +50,15 @@ test('speech cleanup and SSML escaping', () => {
   assert.equal(escapeSsml('<voice name="x">&'), '&lt;voice name=&quot;x&quot;&gt;&amp;');
 });
 
-test('neural voice sends mp3 audio; failure falls back to the system voice', async () => {
+test('cloud voice sends mp3 audio; failure falls back to the system voice', async () => {
   const sent = [];
   const calls = [];
   let fail = false;
-  const neuralTts = { synth: async (text, opts) => { calls.push({ text, opts }); if (fail) throw new Error('offline'); return Buffer.from('ID3fake'); } };
-  const studio = new Studio({ neuralTts, broadcast: (type, payload) => sent.push({ type, payload }) });
-  studio.cfg.settings.tts.neuralVoice = 'ru-RU-DmitryNeural';
+  const cloudTts = { synth: async (text, cfg) => { calls.push({ text, cfg }); if (fail) throw new Error('Azure: ключ неверный'); return Buffer.from('ID3fake'); } };
+  const studio = new Studio({ cloudTts, broadcast: (type, payload) => sent.push({ type, payload }) });
+  Object.assign(studio.cfg.settings.tts, { engine: 'azure', azureKey: 'k', azureVoice: 'ru-RU-DmitryNeural' });
   await studio.speak('привет');
-  assert.equal(calls[0].opts.voice, 'ru-RU-DmitryNeural');
+  assert.equal(calls[0].cfg.azureVoice, 'ru-RU-DmitryNeural');
   assert.match(sent.at(-1).payload.audio, /^data:audio\/mpeg;base64,/);
   fail = true;
   await studio.speak('второй раз');
@@ -67,7 +67,11 @@ test('neural voice sends mp3 audio; failure falls back to the system voice', asy
   // While the service is down, phrases go straight to the system voice.
   studio.speak('третий');
   assert.equal(calls.length, 2);
-  assert.equal(sent.at(-1).payload.text, 'третий');
+  // …but "check voice" always retries and reports the exact error.
+  const r = await studio.testVoice();
+  assert.deepEqual(r, { ok: false, engine: 'azure', error: 'Azure: ключ неверный' });
+  fail = false;
+  assert.deepEqual(await studio.testVoice(), { ok: true, engine: 'azure' });
   await studio.shutdown();
 });
 

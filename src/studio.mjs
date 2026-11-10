@@ -19,7 +19,9 @@ import { SongQueue } from './songs.mjs';
 import { KeyController, createOsDriver } from './keyboard.mjs';
 import { License, PRO_FEATURES } from './license.mjs';
 import { ChatReader } from './chat-filter.mjs';
-import { NeuralTTS } from './neural-tts.mjs';
+import { CloudTTS } from './cloud-tts.mjs';
+import { Entrances } from './entrances.mjs';
+import { MediaStore } from './media.mjs';
 
 // Store/product ids and checkout link of the subscription live in package.json → "tiklive".
 function readPackage() {
@@ -53,7 +55,7 @@ export class ProRequiredError extends Error {
 const DEDUPE_WINDOW_MS = 1500;
 
 export class Studio {
-  constructor({ dataDir, broadcast = () => {}, fetchImpl = globalThis.fetch, keyDriver, createAiClient, license, neuralTts } = {}) {
+  constructor({ dataDir, broadcast = () => {}, fetchImpl = globalThis.fetch, keyDriver, createAiClient, license, cloudTts, mediaLimits } = {}) {
     this.broadcast = broadcast;
     this.fetch = fetchImpl;
     this.config = new JsonStore(dataDir && join(dataDir, 'config.json'), DEFAULT_CONFIG);
@@ -83,8 +85,10 @@ export class Studio {
     this.battle = null;
     this.recentKeys = new Map();
     this.chatReader = new ChatReader();
-    this.neural = neuralTts || new NeuralTTS();
-    this.neuralFailedAt = 0;
+    this.cloudTts = cloudTts || new CloudTTS({ fetchImpl });
+    this.cloudFailedAt = 0;
+    this.entrances = new Entrances();
+    this.media = new MediaStore({ dir: dataDir && join(dataDir, 'media'), ...mediaLimits });
     this.feed = [];
     this.log = [];
     this.statsDirty = true;
@@ -115,6 +119,13 @@ export class Studio {
       }
       s.tts.output ||= 'app';
       done.push('tts-in-app');
+      this.config.save();
+    }
+    if (!done.includes('cloud-tts')) {
+      // 0.3.3 defaulted to an unofficial Edge voice service that no longer accepts apps.
+      if (s.tts.engine === 'neural') s.tts.engine = 'system';
+      delete s.tts.neuralVoice;
+      done.push('cloud-tts');
       this.config.save();
     }
     if (!done.includes('chat-tts')) {
@@ -201,6 +212,13 @@ export class Studio {
       this.config.save();
     }
 
+    if (ev.type === 'member') {
+      const entrance = this.entrances.check(ev, this.cfg.settings.entrances);
+      if (entrance) {
+        this.queue.push({ id: `${ev.id}-entrance`, avatar: ev.user?.avatar, style: 'entrance', priority: 0, ...entrance });
+        this.logLine(`🎬 Вход: ${ev.user.nickname}`);
+      }
+    }
     if (ev.type === 'chat') {
       if (this.handleSongCommand(ev)) return;
       if (this.poll?.vote(ev.user, ev.text)) this.broadcast('poll', this.poll.snapshot());
@@ -234,23 +252,48 @@ export class Studio {
     return stripLinks ? out.replace(/https?:\/\/\S+/gi, '[ссылка]') : out;
   }
 
-  // Neural voice: synthesized here, sent as a data: URL so the app window and OBS overlays
+  // Cloud neural voice: synthesized here, sent as a data: URL so the app window and OBS overlays
   // (which have no session) can play it. If the service fails, the system voice speaks instead
-  // and neural is skipped for a minute so a dead service doesn't delay every phrase.
+  // and the cloud is skipped for a minute so a dead key doesn't delay every phrase.
   speak(text) {
     const tts = this.cfg.settings.tts;
     const clean = this.censor(text).slice(0, tts.maxLength || 200);
     if (!clean.trim()) return;
     const msg = { text: clean, lang: tts.lang, voice: tts.voice, rate: tts.rate, volume: tts.volume, output: tts.output || 'app' };
-    if (tts.engine !== 'neural' || Date.now() - this.neuralFailedAt < 60000) return this.broadcast('tts', msg);
-    return this.neural.synth(clean, { voice: tts.neuralVoice, rate: tts.rate, pitch: tts.pitch }).then(
+    if (!this.cloudEngine() || Date.now() - this.cloudFailedAt < 60000) return this.broadcast('tts', msg);
+    return this.cloudTts.synth(clean, tts).then(
       (mp3) => this.broadcast('tts', { ...msg, audio: `data:audio/mpeg;base64,${mp3.toString('base64')}` }),
       (err) => {
-        this.neuralFailedAt = Date.now();
-        this.logLine(`⚠ Нейро-голос недоступен (${err.message}) — говорит системный голос`);
+        this.cloudFailedAt = Date.now();
+        this.logLine(`⚠ Нейро-голос: ${err.message} — говорит системный голос`);
         this.broadcast('tts', msg);
       },
     );
+  }
+
+  cloudEngine() {
+    const e = this.cfg.settings.tts.engine;
+    return e === 'azure' || e === 'yandex' ? e : null;
+  }
+
+  // "Check voice" button: always tries the cloud (ignores the 1-minute pause) and reports the
+  // exact error, so the streamer sees why the neural voice is silent.
+  async testVoice(text = 'Привет! Так будет звучать озвучка на эфире.') {
+    const tts = this.cfg.settings.tts;
+    const msg = { text, lang: tts.lang, voice: tts.voice, rate: tts.rate, volume: tts.volume, output: 'app' };
+    if (!this.cloudEngine()) {
+      this.broadcast('tts', msg);
+      return { ok: true, engine: 'system' };
+    }
+    try {
+      const mp3 = await this.cloudTts.synth(text, tts);
+      this.cloudFailedAt = 0;
+      this.broadcast('tts', { ...msg, audio: `data:audio/mpeg;base64,${mp3.toString('base64')}` });
+      return { ok: true, engine: tts.engine };
+    } catch (err) {
+      this.broadcast('tts', msg);
+      return { ok: false, engine: tts.engine, error: err.message };
+    }
   }
 
   // --- updates ---------------------------------------------------------------
@@ -583,6 +626,7 @@ export class Studio {
 
   resetSession() {
     this.stats.reset();
+    this.entrances.reset();
     this.engine.reset();
     for (const g of this.cfg.goals) g.current = 0;
     this.config.save();

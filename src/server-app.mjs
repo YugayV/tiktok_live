@@ -6,6 +6,8 @@ import { extname, join, normalize as normPath, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { Studio } from './studio.mjs';
+import { normalize } from './normalize.mjs';
+import { serveMedia } from './media.mjs';
 
 export const PUBLIC = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
 
@@ -26,12 +28,18 @@ export function send(res, status, body, type = 'application/json') {
   res.end(type === 'application/json' ? JSON.stringify(body) : body);
 }
 
-export async function readJson(req) {
-  let raw = '';
+// Uploads come as base64 JSON, so that one route gets a bigger limit.
+export const bodyLimit = (path, uploadMB = 80) => (path === '/api/media/upload' ? uploadMB * 1024 * 1024 * 1.37 : 1e6);
+
+export async function readJson(req, limit = 1e6) {
+  const chunks = [];
+  let size = 0;
   for await (const chunk of req) {
-    raw += chunk;
-    if (raw.length > 1e6) throw new Error('Body too large');
+    size += chunk.length;
+    if (size > limit) throw new Error('Файл или запрос слишком большой');
+    chunks.push(chunk);
   }
+  const raw = Buffer.concat(chunks).toString('utf8');
   return raw ? JSON.parse(raw) : {};
 }
 
@@ -58,6 +66,17 @@ export function buildRoutes(studio, broadcast) {
     'POST /api/alert/clear': () => (studio.queue.clear(), { ok: true }),
     'POST /api/alert/pause': (b) => (studio.queue.setPaused(Boolean(b.paused)), studio.queue.snapshot()),
     'POST /api/tts': (b) => (studio.speak(String(b.text || '')), { ok: true }),
+    'POST /api/tts/test': () => studio.testVoice(),
+    'POST /api/media/list': () => ({ files: studio.media.list() }),
+    'POST /api/media/upload': (b) => studio.media.save(b.name, b.data),
+    'POST /api/media/delete': (b) => (studio.media.remove(b.file), { ok: true }),
+    // Plays the entrance exactly as a real join would (ignores "once per session").
+    'POST /api/entrance/test': (b) => {
+      const nick = String(b.user || '').replace(/^@/, '') || 'viewer';
+      studio.entrances.seen.delete(nick.toLowerCase());
+      studio.handleEvent(normalize('member', { user: { uniqueId: nick, nickname: nick } }));
+      return { ok: true };
+    },
     'POST /api/wheel/spin': (b) => studio.spinWheel(b.by),
     'POST /api/poll/start': (b) => studio.startPoll(b),
     'POST /api/poll/end': () => studio.endPoll(),
@@ -140,9 +159,14 @@ export function startServer({ port = 8787, host = '127.0.0.1', dataDir, demo = f
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const handler = routes[`${req.method} ${url.pathname}`];
+    const media = /^\/overlay\/media\/([\w.]+)$/.exec(url.pathname);
+    if (media && req.method === 'GET') {
+      const file = studio.media.path(media[1]);
+      return file ? serveMedia(req, res, file) : send(res, 404, 'Not found', 'text/plain');
+    }
     if (!handler) return serveStatic(res, url.pathname);
     try {
-      const body = req.method === 'GET' ? {} : await readJson(req);
+      const body = req.method === 'GET' ? {} : await readJson(req, bodyLimit(url.pathname));
       const out = await handler(body);
       if (out && out.__raw !== undefined) return send(res, 200, out.__raw, out.type);
       send(res, 200, out ?? { ok: true });

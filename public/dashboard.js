@@ -478,6 +478,7 @@
     renderAudioHint();
     renderChatToggle();
     renderEngine();
+    renderEntrances();
   }
   $('#settingsForm').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -724,10 +725,21 @@
   }
   // Browsers unlock audio after the first click; a no-op utterance warms the speech engine up.
   document.addEventListener('click', () => 'speechSynthesis' in window && speechSynthesis.resume(), { once: true });
-  // Save first so the server speaks with the voice that is selected right now.
+  // Save first so the server speaks with the voice that is selected right now, then show
+  // exactly what happened (a wrong key or region is the usual reason a neural voice is silent).
   $('#ttsCheck').onclick = () => {
     $('#settingsForm').requestSubmit();
-    setTimeout(() => call('/api/tts', { text: 'Привет! Так будет звучать озвучка на эфире.' }), 400);
+    $('#ttsCheckResult').textContent = 'Проверяю…';
+    setTimeout(async () => {
+      try {
+        const r = await api('/api/tts/test', {});
+        const names = { system: 'системный голос', azure: 'Azure', yandex: 'Яндекс' };
+        $('#ttsCheckResult').textContent = r.ok ? `✅ Работает: ${names[r.engine]}` : `❌ ${r.error}. Сейчас прозвучал системный голос.`;
+        $('#ttsCheckResult').style.color = r.ok ? '' : '#ff6b81';
+      } catch (e) {
+        $('#ttsCheckResult').textContent = `❌ ${e.message}`;
+      }
+    }, 500);
   };
   $('#ttsStop').onclick = () => stopTts();
   // Quick toggle on the home tab: read chat aloud (with the junk filter from settings).
@@ -742,9 +754,8 @@
     if (box) box.checked = e.target.checked;
   };
   function renderEngine() {
-    const neural = $('#settingsForm').elements['tts.engine'].value === 'neural';
-    for (const el of $$('.only-neural')) el.classList.toggle('hidden', !neural);
-    for (const el of $$('.only-system')) el.classList.toggle('hidden', neural);
+    const engine = $('#settingsForm').elements['tts.engine'].value;
+    for (const k of ['system', 'azure', 'yandex']) for (const el of $$(`.only-${k}`)) el.classList.toggle('hidden', engine !== k);
   }
   $('#settingsForm').elements['tts.engine'].addEventListener('change', renderEngine);
   function renderAudioHint() {
@@ -753,6 +764,111 @@
     const src = `${overlayBase()}?w=alerts&preview=1&audio=0`;
     if ($('#alertPreview').getAttribute('src') !== src) $('#alertPreview').src = src;
   }
+
+  // ---------- entrance videos ----------
+  const ent = () => S.config.settings.entrances;
+  const mediaLabel = (url) => (url.startsWith('media/') ? '📁 файл' : url.replace(/^https:\/\//, '').slice(0, 40));
+  function renderEntrances() {
+    if (!S?.config?.settings?.entrances) return;
+    fillForm($('#entranceForm'), ent());
+    const list = $('#entranceList');
+    list.replaceChildren();
+    if (!ent().list.length) list.innerHTML = '<p class="muted">Пока никого. Добавьте зрителя и его видео.</p>';
+    for (const e of ent().list) {
+      const row = document.createElement('div');
+      row.className = 'r';
+      row.innerHTML = `<span><b>@${esc(e.user)}</b> — ${esc(mediaLabel(e.video))}${e.text ? ` · <span class="muted">${esc(e.text)}</span>` : ''}</span>`;
+      const btns = document.createElement('span');
+      btns.append(
+        button('▶', () => call('/api/entrance/test', { user: e.user })),
+        button('✕', () => {
+          ent().list = ent().list.filter((x) => x !== e);
+          saveConfig({ settings: S.config.settings }, 'Удалено');
+          renderEntrances();
+        }),
+      );
+      btns.lastChild.className = 'x danger';
+      row.append(btns);
+      list.append(row);
+    }
+    loadMedia();
+  }
+  async function loadMedia() {
+    const r = await api('/api/media/list', {}).catch(() => null);
+    const box = $('#mediaList');
+    if (!r) return;
+    box.replaceChildren();
+    if (!r.files.length) box.innerHTML = '<p class="muted">Файлов нет.</p>';
+    const used = new Set([ent().defaultVideo, ...ent().list.map((e) => e.video)]);
+    for (const f of r.files) {
+      const row = document.createElement('div');
+      row.className = 'r';
+      row.innerHTML = `<span>${esc(f.file)} · ${(f.size / 1048576).toFixed(1)} МБ${used.has(f.url) ? ' · <b>используется</b>' : ''}</span>`;
+      const del = button('✕', () => call('/api/media/delete', { file: f.file }, 'Файл удалён').then(loadMedia));
+      del.className = 'x danger';
+      row.append(del);
+      box.append(row);
+    }
+  }
+  // Files go up as base64 JSON (keeps the JSON-only CSRF protection of the web version).
+  async function uploadFile(file, status) {
+    status.textContent = `Загружаю ${file.name} (${(file.size / 1048576).toFixed(1)} МБ)…`;
+    const data = await new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(String(fr.result).split(',')[1] || '');
+      fr.onerror = () => reject(new Error('Не удалось прочитать файл'));
+      fr.readAsDataURL(file);
+    });
+    try {
+      const r = await api('/api/media/upload', { name: file.name, data });
+      status.textContent = '✅ Файл загружен';
+      return r.url;
+    } catch (e) {
+      status.textContent = `❌ ${e.message}`;
+      throw e;
+    }
+  }
+  $('#entranceAdd input[type=file]').onchange = async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const url = await uploadFile(f, $('#entranceUpload')).catch(() => '');
+    if (url) $('#entranceAdd').elements.video.value = url;
+    e.target.value = '';
+  };
+  $('#entranceForm input[type=file]').onchange = async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const url = await uploadFile(f, $('#entranceUpload')).catch(() => '');
+    if (url) $('#entranceForm').elements.defaultVideo.value = url;
+    e.target.value = '';
+  };
+  $('#entranceAdd').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const f = e.target.elements;
+    const user = f.user.value.trim().replace(/^@/, '');
+    const video = f.video.value.trim();
+    if (!video) return toast('Загрузите видео или вставьте https-ссылку', true);
+    if (!/^media\//.test(video) && !/^https:\/\//i.test(video)) return toast('Ссылка должна начинаться с https://', true);
+    ent().list = ent().list.filter((x) => x.user.toLowerCase() !== user.toLowerCase());
+    ent().list.push({ id: `e-${Date.now().toString(36)}`, user, video, text: f.text.value.trim() });
+    saveConfig({ settings: S.config.settings }, `Вход для @${user} сохранён`);
+    e.target.reset();
+    $('#entranceUpload').textContent = '';
+    renderEntrances();
+  });
+  $('#entranceForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    for (const el of e.target.elements) {
+      if (!el.name || el.type === 'file') continue;
+      ent()[el.name] = el.type === 'checkbox' ? el.checked : el.type === 'number' ? Number(el.value) : el.value.trim();
+    }
+    saveConfig({ settings: S.config.settings }, 'Настройки входов сохранены');
+    renderEntrances();
+  });
+  $('#entranceTest').addEventListener('submit', (e) => {
+    e.preventDefault();
+    call('/api/entrance/test', { user: e.target.elements.user.value.trim() });
+  });
 
   // ---------- live socket ----------
   // Web version: account bar, hide what a server cannot do on the streamer's PC.

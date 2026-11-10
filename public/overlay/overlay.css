@@ -105,3 +105,7 @@ body.preview { background: #1b1b24 repeating-conic-gradient(#22222e 0 25%, #1b1b
 .aicard .a { font-size: 24px; font-weight: 700; line-height: 1.25; }
 
 .hidden { display: none !important; }
+/* entrance videos: media on top, avatar + text under it */
+.alert.has-media { flex-direction: column; text-align: center; gap: 10px; max-width: 90vw; }
+.alert .alert-media { max-width: min(640px, 90vw); max-height: 60vh; border-radius: 16px; object-fit: contain; display: block; margin: 0 auto 10px; }
+.alert.entrance { --c: #25f4ee; }

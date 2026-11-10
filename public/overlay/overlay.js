@@ -99,6 +99,27 @@
       const el = document.createElement('div');
       el.className = `alert ${a.style || ''}`;
       el.innerHTML = `${img(a.avatar, 'avatar')}<div class="txt shadow">${esc(a.text)}${a.count > 1 ? `<span class="cnt">×${a.count}</span>` : ''}</div>${img(a.image, 'gift')}`;
+      // Entrance video (or any alert with media): above the text, ends with the alert.
+      if (a.video) {
+        const isImg = /\.(gif|png|jpe?g|webp)(\?|$)/i.test(a.video);
+        const m = document.createElement(isImg ? 'img' : 'video');
+        m.className = 'alert-media';
+        m.src = a.video;
+        if (!isImg) {
+          m.autoplay = true;
+          m.playsInline = true;
+          // Sound of the video goes to OBS; the in-app preview stays silent.
+          m.muted = params.get('audio') === '0';
+          m.volume = Math.max(0, Math.min(1, a.volume ?? 0.8));
+          m.play().catch(() => {
+            m.muted = true;
+            m.play().catch(() => {});
+          });
+          m.onended = () => el.classList.add('out');
+        }
+        el.classList.add('has-media');
+        el.prepend(m);
+      }
       this.stage.replaceChildren(el);
       playSound(a.sound, 1, a.output);
       if (a.confetti) confetti();

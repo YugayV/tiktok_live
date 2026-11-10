@@ -5,6 +5,9 @@ import { createHmac } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { Studio } from '../src/studio.mjs';
+
+// Uploaded overlay files per web user (entrance videos): server disk is shared, so keep it modest.
+export const HOSTED_MEDIA = { maxFileMB: 20, maxTotalMB: 200 };
 import { License } from '../src/license.mjs';
 import { AiError } from '../src/ai.mjs';
 import { buildRoutes } from '../src/server-app.mjs';
@@ -90,7 +93,7 @@ export class TenantManager {
       secret: createHmac('sha256', this.serverSecret).update(`license:${userId}`).digest(),
       instanceName: `web-${userId}`,
     });
-    const studio = new Studio({ dataDir: dir, broadcast, fetchImpl: this.fetch, license, keyDriver: NOOP_KEYS, createAiClient: () => this.aiClient(userId, license) });
+    const studio = new Studio({ dataDir: dir, broadcast, fetchImpl: this.fetch, license, keyDriver: NOOP_KEYS, mediaLimits: HOSTED_MEDIA, createAiClient: () => this.aiClient(userId, license) });
     this.enforceHostedSettings(studio);
 
     // The server's TikTok signing key is used for everyone but never written into user config
