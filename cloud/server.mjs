@@ -2,6 +2,7 @@
 // TikLive cloud HTTP server. Configuration via environment variables (see cloud/README.md).
 
 import { createServer } from 'node:http';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
 import { CloudService, JsonStore } from './service.mjs';
@@ -17,6 +18,9 @@ for (const name of ['ANTHROPIC_API_KEY', 'LS_STORE_ID', 'LS_PRODUCT_ID']) {
 }
 
 const store = new JsonStore(join(env.DATA_DIR || './cloud-data', 'state.json'));
+// Owner keys are signed by the app's owner; the public half ships in package.json.
+const PKG_OWNER_KEY = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).tiklive?.ownerPublicKey || '';
+
 const service = new CloudService({
   anthropic: new Anthropic(), // reads ANTHROPIC_API_KEY
   store,
@@ -31,6 +35,9 @@ const service = new CloudService({
     trialsPerIp: num(env.TRIALS_PER_IP),
     perMinute: num(env.PER_MINUTE),
     maxConcurrent: num(env.MAX_CONCURRENT),
+    ownerPublicKey: env.OWNER_PUBLIC_KEY || PKG_OWNER_KEY,
+    ownerKeysRevoked: (env.OWNER_KEYS_REVOKED || '').split(',').map((x) => x.trim()).filter(Boolean),
+    ownerMonthlyLimit: num(env.OWNER_MONTHLY_LIMIT),
   },
 });
 

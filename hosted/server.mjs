@@ -67,11 +67,12 @@ export function startHostedServer({
   requireEmailVerification, // default: on whenever e-mail can actually be sent
   google = {}, // { clientId, clientSecret } — "Sign in with Google"; also needs publicUrl
   tiktok = {}, // { clientKey, clientSecret, scopes } — "Continue with TikTok"; also needs publicUrl
+  admins = [], // ['tiktok:vitality_ai', 'email:…'] — admin + Pro, see hosted/README.md
   fetchImpl = globalThis.fetch,
   now = () => Date.now(),
   log = console.log,
 } = {}) {
-  const accounts = new AccountStore(join(dataDir, 'accounts.json'), { now });
+  const accounts = new AccountStore(join(dataDir, 'accounts.json'), { now, admins });
   const tenants = new TenantManager({ dataDir, accounts, anthropic, ai, licenseConfig, serverSecret, signApiKey, fetchImpl, now, log });
   const authLimiter = new Limiter(authLimit, 15 * 60 * 1000, now); // failed logins, resets, password changes
   const signupLimiter = new Limiter(authLimit, 15 * 60 * 1000, now);
@@ -321,6 +322,34 @@ export function startHostedServer({
       if (path === '/forgot' || path === '/reset') return file(res, join(HOSTED_PUBLIC, 'auth.html'));
       if (path === '/login' || path === '/signup') return sessionUser(req) ? redirect(res, '/app') : file(res, join(HOSTED_PUBLIC, 'auth.html'));
       if (path === '/app') return sessionUser(req) ? file(res, join(PUBLIC, 'dashboard.html'), { 'content-security-policy': "frame-ancestors 'self'" }) : redirect(res, '/login');
+
+      // --- admin panel ------------------------------------------------------------
+      if (path === '/admin' || path.startsWith('/admin/')) {
+        const userId = sessionUser(req);
+        if (!userId) return path === '/admin' ? redirect(res, '/login') : send(res, 401, { error: 'Войдите в аккаунт' });
+        if (!accounts.isAdmin(userId)) return send(res, 403, path === '/admin' ? 'Только для администраторов' : { error: 'Только для администраторов' }, path === '/admin' ? 'text/plain; charset=utf-8' : 'application/json');
+        if (path === '/admin') return file(res, join(HOSTED_PUBLIC, 'admin.html'), { 'content-security-policy': "frame-ancestors 'none'" });
+        if (req.method === 'GET' && path === '/admin/api/users') {
+          const users = accounts.list(url.searchParams.get('q') || '').map((u) => ({ ...u, online: tenants.tenants.has(u.id), live: tenants.tenants.get(u.id)?.studio.status?.state === 'connected', username: tenants.tenants.get(u.id)?.studio.cfg.settings.username || '' }));
+          return send(res, 200, { users, total: accounts.allUserIds().length, me: userId });
+        }
+        if (req.method === 'POST' && path === '/admin/api/user') {
+          const b = await readJson(req);
+          const target = accounts.user(b.id) && b.id;
+          if (!target) return send(res, 404, { error: 'Нет такого пользователя' });
+          if (b.action === 'grantPro') accounts.setProGrant(target, Number(b.days) || 0, userId);
+          else if (b.action === 'revokePro') accounts.setProGrant(target, null, userId);
+          else if (b.action === 'makeAdmin') accounts.setRole(target, 'admin');
+          else if (b.action === 'removeAdmin') {
+            if (target === userId) return send(res, 400, { error: 'Нельзя снять права с самого себя' });
+            accounts.setRole(target, 'user');
+          } else return send(res, 400, { error: 'Неизвестное действие' });
+          log(`[admin] ${accounts.label(userId)}: ${b.action}${b.days ? ` ${b.days}d` : ''} → ${accounts.label(target)}`);
+          tenants.refreshLicense(target);
+          return send(res, 200, { ok: true });
+        }
+        return send(res, 404, { error: 'Not found' });
+      }
 
       // --- dashboard API (session) ---------------------------------------------
       if (path.startsWith('/api/')) {

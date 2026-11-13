@@ -4,6 +4,10 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { startHostedServer } from './server.mjs';
 import { createMailer } from './mailer.mjs';
+import { readFileSync } from 'node:fs';
+
+// Admins: package.json → tiklive.admins plus ADMINS="tiktok:handle,email:me@example.com".
+const PKG_ADMINS = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).tiklive?.admins || [];
 
 const env = process.env;
 const num = (v) => (v === undefined || v === '' ? undefined : Number(v));
@@ -29,6 +33,7 @@ const app = startHostedServer({
   webhookSecret: env.LS_WEBHOOK_SECRET || '',
   google: { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET },
   tiktok: { clientKey: env.TIKTOK_CLIENT_KEY, clientSecret: env.TIKTOK_CLIENT_SECRET, scopes: env.TIKTOK_SCOPES || undefined },
+  admins: [...PKG_ADMINS, ...(env.ADMINS || '').split(',')].map((x) => x.trim()).filter(Boolean),
   mailer: createMailer({ apiKey: env.RESEND_API_KEY, from: env.MAIL_FROM, devLog: env.MAIL_DEV_LOG === '1' }),
 });
 

@@ -12,6 +12,7 @@ import { createHmac, createHash } from 'node:crypto';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import os from 'node:os';
+import { verifyOwnerKey, isOwnerKeyFormat } from './owner-key.mjs';
 
 const DAY = 24 * 60 * 60 * 1000;
 const API = 'https://api.lemonsqueezy.com/v1/licenses';
@@ -23,6 +24,7 @@ export const LICENSE_DEFAULTS = {
   cloudUrl: '', // TikLive cloud (cloud/server.mjs) that answers AI questions for subscribers
   storeId: null, // keys from other stores/products are rejected
   productId: null,
+  ownerPublicKey: '', // Ed25519 key that signs owner keys (TLO1.…): Pro + admin, checked offline
   offlineGraceDays: 7, // keep Pro working this long without reaching the license server
   revalidateHours: 12,
 };
@@ -159,7 +161,20 @@ export class License {
     return this.entitlement ? this.entitlement() : null;
   }
 
+  // Owner key (TLO1.…): signature checked locally, never expires unless the key itself says so.
+  owner() {
+    if (!isOwnerKeyFormat(this.state.key)) return null;
+    if (this.ownerCache?.key !== this.state.key) this.ownerCache = { key: this.state.key, payload: verifyOwnerKey(this.state.key, this.cfg.ownerPublicKey) };
+    const p = this.ownerCache.payload;
+    return p && (!p.exp || p.exp > this.clock()) ? p : null;
+  }
+
+  isAdmin() {
+    return this.owner()?.role === 'admin' || this.subscription()?.status === 'admin';
+  }
+
   hasActiveLicense() {
+    if (this.owner()) return true;
     if (this.subscription()?.active) return true;
     const s = this.state;
     if (!s.key || s.licenseStatus !== 'active') return false;
@@ -194,6 +209,8 @@ export class License {
       storeConfigured: Boolean(this.cfg.storeId && this.cfg.productId),
       features: PRO_FEATURES,
       subscription: this.subscription(),
+      owner: this.owner() ? { name: this.owner().sub, role: this.owner().role, expiresAt: this.owner().exp || null } : null,
+      admin: this.isAdmin(),
     };
   }
 
@@ -230,6 +247,14 @@ export class License {
 
   async activate(rawKey) {
     const key = String(rawKey || '').trim();
+    if (isOwnerKeyFormat(key)) {
+      const p = verifyOwnerKey(key, this.cfg.ownerPublicKey, { now: this.clock() });
+      if (!p) throw new Error('Ключ владельца недействителен (подпись не совпадает или срок истёк)');
+      Object.assign(this.state, { key, instanceId: '', licenseStatus: 'active', expiresAt: p.exp ? new Date(p.exp).toISOString() : null, customerEmail: '', lastValidatedAt: this.clock() });
+      this.save();
+      this.emit();
+      return this.status();
+    }
     if (!/^[\w-]{8,}$/.test(key)) throw new Error('Неверный формат ключа');
     this.assertStoreConfigured();
     let reply;
@@ -251,7 +276,7 @@ export class License {
 
   // Periodic online check. Network failures keep the cached state (offline grace period applies).
   async validate() {
-    if (!this.state.key) return this.status();
+    if (!this.state.key || isOwnerKeyFormat(this.state.key)) return this.status();
     try {
       const { httpOk, data } = await this.call('validate', { license_key: this.state.key, ...(this.state.instanceId ? { instance_id: this.state.instanceId } : {}) });
       if (data.valid) {
@@ -271,7 +296,7 @@ export class License {
   }
 
   async deactivate() {
-    if (this.state.key && this.state.instanceId) {
+    if (this.state.key && this.state.instanceId && !isOwnerKeyFormat(this.state.key)) {
       try {
         await this.call('deactivate', { license_key: this.state.key, instance_id: this.state.instanceId });
       } catch {}

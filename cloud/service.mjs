@@ -10,6 +10,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { askClaude, buildSystem, LIMITS } from '../src/ai.mjs';
+import { verifyOwnerKey, isOwnerKeyFormat } from '../src/owner-key.mjs';
 
 const DAY = 86400000;
 const LS_VALIDATE = 'https://api.lemonsqueezy.com/v1/licenses/validate';
@@ -26,6 +27,9 @@ export const CLOUD_DEFAULTS = {
   perMinute: 10, // answers per credential per minute
   maxConcurrent: 8, // parallel Claude calls across all users
   licenseCacheMs: 10 * 60 * 1000,
+  ownerPublicKey: '', // owner keys (TLO1.…) are checked offline with this Ed25519 key
+  ownerKeysRevoked: [], // ids of leaked owner keys
+  ownerMonthlyLimit: 3000, // answers per owner key per month — a cap in case a key leaks
 };
 
 export const sha = (s) => createHash('sha256').update(String(s)).digest('hex');
@@ -114,6 +118,14 @@ export class CloudService {
   async authorize({ authorization, deviceId, instanceId, ip }) {
     const now = this.now();
     const key = /^Bearer\s+(.+)$/i.exec(authorization || '')?.[1]?.trim();
+    if (key && isOwnerKeyFormat(key)) {
+      const owner = verifyOwnerKey(key, this.cfg.ownerPublicKey, { revoked: this.cfg.ownerKeysRevoked, now });
+      if (!owner) throw new HttpError(402, 'TikLive Pro: ключ владельца недействителен');
+      const id = `owner:${owner.id}`;
+      const usage = (this.store.data.usage[id] ||= { month: monthKey(now), used: 0 });
+      if (usage.month !== monthKey(now)) Object.assign(usage, { month: monthKey(now), used: 0 });
+      return { id, plan: 'pro', used: () => usage.used, limit: this.cfg.ownerMonthlyLimit, count: () => usage.used++ };
+    }
     if (key) {
       const lic = await this.checkLicense(key, instanceId);
       if (!lic.ok) throw new HttpError(402, `TikLive Pro: ${lic.reason}`);

@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Админ-панель — TikLive Studio</title>
+<style>
+  :root { --bg:#0b0c11; --panel:#161925; --panel2:#1f2230; --line:#2a2e3f; --text:#eef0f7; --muted:#9196ad; --pink:#fe2c55; --cyan:#25f4ee; --gold:#ffc93c; --green:#2bd67b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif; }
+  header { display: flex; align-items: center; gap: 16px; padding: 14px 20px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header b { font-size: 18px; } header a { color: var(--cyan); text-decoration: none; margin-left: auto; }
+  main { padding: 20px; max-width: 1200px; margin: 0 auto; }
+  .stats { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 16px; } .stat b { font-size: 22px; display: block; }
+  input { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel2); color: var(--text); font: inherit; width: 100%; max-width: 420px; }
+  .wrap { overflow-x: auto; margin-top: 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; }
+  table { width: 100%; border-collapse: collapse; min-width: 820px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { color: var(--muted); font-weight: 600; font-size: 13px; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; margin-right: 4px; }
+  .admin { background: rgba(255,201,60,.15); color: var(--gold); } .pro { background: rgba(43,214,123,.15); color: var(--green); } .live { background: rgba(254,44,85,.18); color: var(--pink); } .muted { color: var(--muted); }
+  button { padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel2); color: var(--text); font: inherit; font-size: 13px; cursor: pointer; margin: 2px; }
+  button:hover { border-color: var(--cyan); } button.danger:hover { border-color: var(--pink); }
+  .toast { position: fixed; right: 16px; bottom: 16px; background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--green); padding: 10px 14px; border-radius: 10px; display: none; }
+</style>
+</head>
+<body>
+<header><b>👑 Админ-панель TikLive</b><span class="muted" id="me"></span><a href="/app">← В панель стримера</a></header>
+<main>
+  <div class="stats" id="stats"></div>
+  <input id="q" placeholder="Поиск: e-mail, @ник TikTok или id">
+  <div class="wrap"><table><thead><tr><th>Пользователь</th><th>Статус</th><th>Pro</th><th>Регистрация</th><th>Действия</th></tr></thead><tbody id="rows"></tbody></table></div>
+  <p class="muted">Pro, выданный здесь, работает без оплаты и важнее подписки. Администраторы получают Pro навсегда и ИИ без месячного лимита. Администраторы из настроек сервера (ADMINS / package.json) назначаются заново при каждом входе.</p>
+</main>
+<div class="toast" id="toast"></div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  const date = (t) => (t ? new Date(t).toLocaleDateString('ru-RU') : '');
+  let me = '';
+  function toast(t, err) {
+    const el = $('toast');
+    el.textContent = t;
+    el.style.borderLeftColor = err ? 'var(--pink)' : 'var(--green)';
+    el.style.display = 'block';
+    clearTimeout(toast.t);
+    toast.t = setTimeout(() => (el.style.display = 'none'), 3000);
+  }
+  function proCell(u) {
+    if (u.role === 'admin') return '<span class="tag pro">Pro навсегда</span>';
+    if (u.proGrant && (!u.proGrant.until || u.proGrant.until > Date.now())) return `<span class="tag pro">Подарен</span> ${u.proGrant.until ? 'до ' + date(u.proGrant.until) : 'навсегда'}`;
+    if (u.subscription) return `<span class="tag pro">Подписка</span> ${esc(u.subscription.status)}`;
+    return '<span class="muted">пробный / нет</span>';
+  }
+  async function load() {
+    const r = await fetch('/admin/api/users?q=' + encodeURIComponent($('q').value));
+    if (!r.ok) return toast((await r.json().catch(() => ({}))).error || 'Ошибка', true);
+    const d = await r.json();
+    me = d.me;
+    const live = d.users.filter((u) => u.live).length;
+    $('stats').innerHTML = `<div class="stat"><b>${d.total}</b>пользователей</div><div class="stat"><b>${d.users.filter((u) => u.online).length}</b>сейчас в панели</div><div class="stat"><b>${live}</b>в эфире</div><div class="stat"><b>${d.users.filter((u) => u.role === 'admin').length}</b>админов</div>`;
+    $('rows').innerHTML = d.users
+      .map((u) => `<tr data-id="${esc(u.id)}">
+        <td>${u.tiktok ? `<b>@${esc(u.tiktok)}</b><br>` : ''}${u.email ? esc(u.email) : ''}${u.username ? `<br><span class="muted">эфир: @${esc(u.username)}</span>` : ''}</td>
+        <td>${u.role === 'admin' ? '<span class="tag admin">АДМИН</span>' : ''}${u.live ? '<span class="tag live">LIVE</span>' : ''}${u.emailVerified ? '' : '<span class="muted">почта не подтверждена</span>'}</td>
+        <td>${proCell(u)}</td>
+        <td>${date(u.createdAt)}</td>
+        <td>
+          <button data-a="grantPro" data-days="30">Pro 30 дн.</button><button data-a="grantPro" data-days="0">Pro навсегда</button>
+          ${u.proGrant ? '<button class="danger" data-a="revokePro">Забрать Pro</button>' : ''}
+          ${u.role === 'admin' ? (u.id === me ? '<span class="muted">это вы</span>' : '<button class="danger" data-a="removeAdmin">Снять админа</button>') : '<button data-a="makeAdmin">Сделать админом</button>'}
+        </td></tr>`)
+      .join('');
+  }
+  $('rows').addEventListener('click', async (e) => {
+    const b = e.target.closest('button[data-a]');
+    if (!b) return;
+    const id = b.closest('tr').dataset.id;
+    if (b.dataset.a === 'makeAdmin' && !confirm('Сделать администратором? Он получит доступ к этой панели и ко всем пользователям.')) return;
+    const r = await fetch('/admin/api/user', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id, action: b.dataset.a, days: b.dataset.days }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return toast(d.error || 'Ошибка', true);
+    toast('Готово');
+    load();
+  });
+  let timer;
+  $('q').addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(load, 250);
+  });
+  load();
+</script>
+</body>
+</html>

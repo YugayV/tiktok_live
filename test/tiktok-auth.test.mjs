@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startHostedServer } from '../hosted/server.mjs';
 
-async function boot({ tiktok = { clientKey: 'awkey', clientSecret: 'shh' }, profile = {}, scope = 'user.info.basic,user.info.profile', allowSignup = true } = {}) {
+async function boot({ tiktok = { clientKey: 'awkey', clientSecret: 'shh' }, profile = {}, scope = 'user.info.basic,user.info.profile', allowSignup = true, admins = [] } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'tiklive-tt-'));
   const calls = [];
   const app = startHostedServer({
@@ -16,6 +16,7 @@ async function boot({ tiktok = { clientKey: 'awkey', clientSecret: 'shh' }, prof
     publicUrl: 'https://app.example.com',
     tiktok,
     allowSignup,
+    admins,
     authLimit: 50,
     fetchImpl: async (url, opts = {}) => {
       calls.push({ url, opts });
@@ -111,4 +112,45 @@ test('web: TikTok disabled without credentials; closed sign-up; basic scope work
   const st = (await h3.api('/api/state', r.session)).json;
   assert.equal(st.hosted.label, 'Стример'); // display name when there is no @username
   assert.equal(st.config.settings.username, '');
+});
+
+test('web: @vitality_ai signing in with TikTok becomes admin with Pro; admin panel grants Pro', async (t) => {
+  const h = await boot({ profile: { username: 'Vitality_AI' }, admins: ['tiktok:@vitality_ai'] });
+  t.after(() => h.cleanup());
+  const admin = await h.go();
+  const st = (await h.api('/api/state', admin.session)).json;
+  assert.equal(st.hosted.admin, true);
+  assert.equal(st.license.plan, 'pro');
+  assert.equal(st.license.subscription.status, 'admin');
+  assert.equal((await h.get('/admin', admin.session)).status, 200);
+
+  // An ordinary e-mail user: no admin panel, then Pro granted from it.
+  const signup = await fetch(h.base + '/auth/signup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'fan@mail.com', password: 'password1' }) });
+  const user = signup.headers.getSetCookie().map((c) => c.split(';')[0]).find((c) => c.startsWith('tl_session='));
+  assert.equal((await h.get('/admin', user)).status, 403);
+  assert.equal((await h.api('/admin/api/users', user)).status, 403);
+  const list = (await h.api('/admin/api/users', admin.session)).json;
+  assert.equal(list.total, 2);
+  const fan = list.users.find((u) => u.email === 'fan@mail.com');
+  assert.equal(fan.role, 'user');
+  assert.equal(JSON.stringify(list).includes('hash'), false); // no secrets in the listing
+
+  assert.equal((await h.api('/admin/api/user', admin.session, { id: fan.id, action: 'grantPro', days: 30 })).status, 200);
+  const fanState = (await h.api('/api/state', user)).json;
+  assert.equal(fanState.license.plan, 'pro');
+  assert.equal(fanState.license.subscription.status, 'gift');
+  await h.api('/admin/api/user', admin.session, { id: fan.id, action: 'revokePro' });
+  assert.notEqual((await h.api('/api/state', user)).json.license.subscription?.status, 'gift');
+
+  // Admins can't demote themselves; a non-admin can't call admin actions.
+  const me = list.users.find((u) => u.role === 'admin');
+  assert.equal((await h.api('/admin/api/user', admin.session, { id: me.id, action: 'removeAdmin' })).status, 400);
+  assert.equal((await h.api('/admin/api/user', user, { id: fan.id, action: 'makeAdmin' })).status, 403);
+});
+
+test('web: a look-alike handle or an unverified e-mail does not get admin', async (t) => {
+  const h = await boot({ profile: { username: 'vitality_ai_fan' }, admins: ['tiktok:vitality_ai', 'email:boss@mail.com'] });
+  t.after(() => h.cleanup());
+  const r = await h.go();
+  assert.equal((await h.api('/api/state', r.session)).json.hosted.admin, false);
 });

@@ -5,6 +5,7 @@ ENV NODE_ENV=production
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 COPY src/ai.mjs src/ai.mjs
+COPY src/owner-key.mjs src/owner-key.mjs
 COPY cloud/ cloud/
 ENV PORT=8080 DATA_DIR=/data TRUST_PROXY=1
 VOLUME /data

@@ -85,6 +85,8 @@ export class TenantManager {
       // The checkout link carries the account id, so the webhook can grant Pro without a key.
       config: { ...this.licenseConfig, checkoutUrl: checkoutUrlFor(this.licenseConfig.checkoutUrl, { email: account?.email, userId }) },
       entitlement: () => {
+        const granted = this.accounts.grant(userId);
+        if (granted) return granted;
         const sub = this.accounts.user(userId)?.subscription;
         return sub ? { active: subscriptionActive(sub, this.now()), status: sub.status, expiresAt: sub.endsAt || sub.renewsAt, manageUrl: sub.manageUrl } : null;
       },
@@ -117,6 +119,7 @@ export class TenantManager {
         label: this.accounts.label(userId),
         tiktok: this.accounts.user(userId)?.tiktok ? { username: this.accounts.user(userId).tiktok.username, displayName: this.accounts.user(userId).tiktok.displayName, avatar: this.accounts.user(userId).tiktok.avatar } : null,
         tiktokLogin: this.tiktokLogin,
+        admin: this.accounts.isAdmin(userId),
         hasPassword: this.accounts.hasPassword(userId), googleLinked: Boolean(this.accounts.user(userId)?.googleSub), emailVerified: this.accounts.isVerified(userId), email: this.accounts.user(userId)?.email, overlayPath: `/o/${this.accounts.user(userId)?.overlayToken}/`, desktopOnly: ['keyboard', 'obs'], aiReady: Boolean(this.anthropic) },
     });
 
@@ -156,6 +159,15 @@ export class TenantManager {
     studio.license.startAutoValidate();
     this.log(`[tenant] started ${userId} (${user?.email})`);
     return { userId, studio, clients, routes, lastActive: this.now() };
+  }
+
+  // Admin changed someone's role/Pro: their open dashboard updates at once.
+  refreshLicense(userId) {
+    const t = this.tenants.get(userId);
+    if (t) {
+      t.studio.license.emit();
+      t.studio.broadcast('hello', t.studio.state());
+    }
   }
 
   // After TikTok sign-in/linking: fill the LIVE @username if the streamer hasn't set one yet.
@@ -207,7 +219,8 @@ export class TenantManager {
             const file = this.usageFile(userId);
             const u = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : { month, used: 0, trialUsed: 0 };
             if (u.month !== month) Object.assign(u, { month, used: 0 });
-            const [used, limit] = plan === 'pro' ? [u.used, this.ai.proMonthlyLimit] : [u.trialUsed, this.ai.trialLimit];
+            // Admins answer without a monthly cap (it is their own server and API key).
+            const [used, limit] = this.accounts.isAdmin(userId) ? [0, Infinity] : plan === 'pro' ? [u.used, this.ai.proMonthlyLimit] : [u.trialUsed, this.ai.trialLimit];
             if (used >= limit) throw new AiError(plan === 'pro' ? 'Лимит ответов ИИ на этот месяц исчерпан' : 'Лимит ответов ИИ пробного периода исчерпан', 429);
             if (plan === 'pro') u.used++;
             else u.trialUsed++;

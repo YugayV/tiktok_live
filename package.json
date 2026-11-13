@@ -1,6 +1,6 @@
 {
   "name": "tiklive",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "private": true,
   "description": "TikLive Studio — interactive TikTok LIVE toolkit: alerts, rules engine, goals, games, TTS and OBS automation",
   "type": "module",
@@ -109,6 +109,10 @@
     "storeId": null,
     "productId": null,
     "priceLabel": "$8 / месяц",
+    "ownerPublicKey": "oKh47N4vBanp0BVOoPXNAp5hKUAdXVaVI13rWQLVGWU=",
+    "admins": [
+      "tiktok:vitality_ai"
+    ],
     "trialDays": 7
   },
   "homepage": "https://yugayv.github.io/tiktok_live/",

@@ -605,8 +605,9 @@
     const st = $('#proStatus');
     st.className = `pro-status ${l.plan}`;
     const sub = l.subscription;
-    const SUB_STATUS = { active: 'активна', on_trial: 'активна', past_due: 'проблема с оплатой — обновите карту', cancelled: 'отменена', paused: 'на паузе', unpaid: 'не оплачена', expired: 'закончилась' };
-    if (sub?.active) st.innerHTML = `Статус: <b>Pro активен</b> · подписка ${esc(SUB_STATUS[sub.status] || sub.status)}${sub.expiresAt ? (sub.status === 'cancelled' ? ' · работает до ' : ' · следующее списание ') + new Date(sub.expiresAt).toLocaleDateString('ru-RU') : ''}`;
+    const SUB_STATUS = { admin: 'администратор — бессрочно', gift: 'подарена администратором', active: 'активна', on_trial: 'активна', past_due: 'проблема с оплатой — обновите карту', cancelled: 'отменена', paused: 'на паузе', unpaid: 'не оплачена', expired: 'закончилась' };
+    if (l.owner) st.innerHTML = `Статус: <b>Pro ${l.owner.role === 'admin' ? '+ администратор' : ''}</b> · ключ владельца @${esc(l.owner.name)}${l.owner.expiresAt ? ' · до ' + new Date(l.owner.expiresAt).toLocaleDateString('ru-RU') : ' · бессрочно'}`;
+    else if (sub?.active) st.innerHTML = `Статус: <b>Pro активен</b> · подписка ${esc(SUB_STATUS[sub.status] || sub.status)}${sub.expiresAt ? (sub.status === 'cancelled' ? ' · работает до ' : ' · следующее списание ') + new Date(sub.expiresAt).toLocaleDateString('ru-RU') : ''}`;
     else if (l.plan === 'pro') st.innerHTML = `Статус: <b>Pro активен</b> · ключ ${esc(l.key)}${l.customerEmail ? ' · ' + esc(l.customerEmail) : ''}${l.expiresAt ? ' · до ' + new Date(l.expiresAt).toLocaleDateString('ru-RU') : ''}`;
     else if (l.plan === 'trial') st.innerHTML = `Статус: <b>пробный период</b> — до ${new Date(l.trialEndsAt).toLocaleDateString('ru-RU')} (${l.trialDaysLeft} дн.)`;
     else st.innerHTML = `Статус: <b>пробный период закончился</b>${l.key ? ` · ключ ${esc(l.key)}: ${esc(l.licenseStatus || 'не подтверждён')}` : ''}`;
@@ -989,6 +990,13 @@
     bar.id = 'account';
     bar.className = 'account';
     bar.innerHTML = `${h.tiktok?.avatar ? `<img class="avatar" src="${esc(h.tiktok.avatar)}" alt="" onerror="this.remove()">` : ''}<span>${esc(h.label || h.email)}</span>`;
+    if (h.admin) {
+      const a = document.createElement('a');
+      a.href = '/admin';
+      a.className = 'admin-link';
+      a.textContent = '👑 Админ-панель';
+      bar.append(a);
+    }
     bar.append(button('Выйти', () => api('/auth/logout', {}).finally(() => (location.href = '/login'))));
     $('header').append(bar);
     $('#tabs [data-tab=keyboard]')?.remove();

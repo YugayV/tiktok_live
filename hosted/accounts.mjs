@@ -27,9 +27,13 @@ export function normalizeEmail(email) {
 }
 
 export class AccountStore {
-  constructor(file, { now = () => Date.now() } = {}) {
+  // admins: ['tiktok:vitality_ai', 'email:me@example.com'] — matched only against identities a
+  // provider has confirmed (TikTok Login handle, verified e-mail). Once matched, the role sticks
+  // to the account, so a handle that later changes hands doesn't pass admin rights on.
+  constructor(file, { now = () => Date.now(), admins = [] } = {}) {
     this.file = file;
     this.now = now;
+    this.admins = admins.map((a) => String(a).trim().toLowerCase().replace(/^tiktok:@/, 'tiktok:')).filter(Boolean);
     this.data = { users: {}, sessions: {}, resets: {}, verifies: {} };
     if (file && existsSync(file)) this.data = { ...this.data, ...JSON.parse(readFileSync(file, 'utf8')) };
     this.data.verifies ||= {};
@@ -37,6 +41,81 @@ export class AccountStore {
     this.byOverlay = new Map(Object.entries(this.data.users).map(([id, u]) => [u.overlayToken, id]));
     this.byGoogle = new Map(Object.entries(this.data.users).filter(([, u]) => u.googleSub).map(([id, u]) => [u.googleSub, id]));
     this.byTikTok = new Map(Object.entries(this.data.users).filter(([, u]) => u.tiktok?.openId).map(([id, u]) => [u.tiktok.openId, id]));
+    let changed = false;
+    for (const id of Object.keys(this.data.users)) changed = this.applyAdmins(id, { save: false }) || changed;
+    if (changed) this.save();
+  }
+
+  // --- roles: admin and Pro granted by an admin -----------------------------------
+  // A TikTok handle in the list is bound to the first TikTok account (open_id) that claims it:
+  // if the owner renames and someone else takes the handle, they don't inherit admin.
+  matchesAdminList(u) {
+    const bound = (this.data.adminBindings ||= {});
+    if (u.tiktok?.username && u.tiktok.openId) {
+      const entry = `tiktok:${String(u.tiktok.username).toLowerCase()}`;
+      if (this.admins.includes(entry) && (!bound[entry] || bound[entry] === u.tiktok.openId)) {
+        bound[entry] = u.tiktok.openId;
+        return true;
+      }
+    }
+    return Boolean(u.email && u.emailVerified !== false && this.admins.includes(`email:${u.email}`));
+  }
+
+  applyAdmins(id, { save = true } = {}) {
+    const u = this.data.users[id];
+    if (!u || u.role === 'admin' || !this.matchesAdminList(u)) return false;
+    u.role = 'admin';
+    if (save) this.save();
+    return true;
+  }
+
+  isAdmin(id) {
+    return this.data.users[id]?.role === 'admin';
+  }
+
+  setRole(id, role) {
+    const u = this.data.users[id];
+    if (!u) throw new Error('Нет такого пользователя');
+    if (role === 'admin') u.role = 'admin';
+    else delete u.role;
+    this.save();
+  }
+
+  // Pro without a subscription: { until: timestamp | null (forever), by: adminId, at }.
+  setProGrant(id, days, byId) {
+    const u = this.data.users[id];
+    if (!u) throw new Error('Нет такого пользователя');
+    if (days === null || days === undefined) delete u.proGrant;
+    else u.proGrant = { until: Number(days) > 0 ? this.now() + Number(days) * 86400000 : null, by: byId, at: this.now() };
+    this.save();
+  }
+
+  // Entitlement that beats any subscription: admins, then Pro granted by an admin.
+  grant(id) {
+    const u = this.data.users[id];
+    if (!u) return null;
+    if (u.role === 'admin') return { active: true, status: 'admin', expiresAt: null };
+    const g = u.proGrant;
+    if (g && (!g.until || g.until > this.now())) return { active: true, status: 'gift', expiresAt: g.until ? new Date(g.until).toISOString() : null };
+    return null;
+  }
+
+  // Admin panel listing (no secrets: no hashes, tokens or overlay links).
+  list(query = '') {
+    const q = String(query).trim().toLowerCase().replace(/^@/, '');
+    return Object.entries(this.data.users)
+      .filter(([id, u]) => !q || id.toLowerCase().includes(q) || (u.email || '').includes(q) || String(u.tiktok?.username || '').toLowerCase().includes(q) || String(u.tiktok?.displayName || '').toLowerCase().includes(q))
+      .sort((a, b) => b[1].createdAt - a[1].createdAt)
+      .map(([id, u]) => ({
+        id,
+        email: u.email,
+        tiktok: u.tiktok?.username || null,
+        createdAt: u.createdAt,
+        emailVerified: u.emailVerified !== false,
+        role: u.role || 'user',
+        proGrant: u.proGrant || null,
+        subscription: u.subscription ? { status: u.subscription.status, renewsAt: u.subscription.renewsAt, endsAt: u.subscription.endsAt } : null,
+      }));
   }
 
   save() {
@@ -58,6 +137,7 @@ export class AccountStore {
     this.data.users[id] = { email, salt, hash, createdAt: this.now(), overlayToken: token(18), autoConnect: false, emailVerified: verified };
     this.byEmail.set(email, id);
     this.byOverlay.set(this.data.users[id].overlayToken, id);
+    this.applyAdmins(id, { save: false });
     this.save();
     return id;
   }
@@ -119,6 +199,7 @@ export class AccountStore {
     if (id) {
       Object.assign(this.data.users[id], { googleSub: sub, emailVerified: true });
       this.byGoogle.set(sub, id);
+      this.applyAdmins(id, { save: false });
       this.save();
       return { userId: id, created: false, linked: true };
     }
@@ -128,6 +209,7 @@ export class AccountStore {
     this.byEmail.set(norm, id);
     this.byOverlay.set(this.data.users[id].overlayToken, id);
     this.byGoogle.set(sub, id);
+    this.applyAdmins(id, { save: false });
     this.save();
     return { userId: id, created: true };
   }
@@ -138,6 +220,7 @@ export class AccountStore {
     let id = this.byTikTok.get(profile.openId);
     if (id && this.data.users[id]) {
       this.data.users[id].tiktok = { ...this.data.users[id].tiktok, ...profile };
+      this.applyAdmins(id, { save: false });
       this.save();
       return { userId: id, created: false };
     }
@@ -145,6 +228,7 @@ export class AccountStore {
     this.data.users[id] = { email: null, salt: null, hash: null, tiktok: profile, createdAt: this.now(), overlayToken: token(18), autoConnect: false, emailVerified: true };
     this.byOverlay.set(this.data.users[id].overlayToken, id);
     this.byTikTok.set(profile.openId, id);
+    this.applyAdmins(id, { save: false });
     this.save();
     return { userId: id, created: true };
   }
@@ -155,6 +239,7 @@ export class AccountStore {
     if (owner && owner !== id) throw new Error('Этот аккаунт TikTok уже привязан к другому аккаунту TikLive');
     this.data.users[id].tiktok = profile;
     this.byTikTok.set(profile.openId, id);
+    this.applyAdmins(id, { save: false });
     this.save();
   }
 
@@ -189,6 +274,7 @@ export class AccountStore {
     if (!v || v.expires < this.now() || !this.data.users[v.userId]) throw new Error('Ссылка подтверждения недействительна или устарела. Отправьте письмо ещё раз из панели.');
     delete this.data.verifies[key];
     this.data.users[v.userId].emailVerified = true;
+    this.applyAdmins(v.userId, { save: false });
     this.save();
     return v.userId;
   }

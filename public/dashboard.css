@@ -128,3 +128,5 @@ table.plans td:first-child, table.plans th:first-child { text-align: left; }
 .fx-row .filebtn { padding: 8px 10px; }
 .fx-btns { display: flex; gap: 6px; }
 @media (max-width: 900px) { .fx-row, .fx-row:has([data-k=gift]) { grid-template-columns: 1fr 1fr; } }
+
+.admin-link { color: #ffc93c; font-weight: 700; text-decoration: none; margin: 0 8px; }
